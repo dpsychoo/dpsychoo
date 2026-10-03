@@ -21,14 +21,54 @@ from xml.sax.saxutils import escape
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
+from hero_modules import module_overlay, module_points
+
 
 WIDTH, HEIGHT = 1180, 610
 PORTRAIT_SIZE = (300, 340)
 MORPH_COUNT = 208
-LOOP_SECONDS = 24
-INTRO_SECONDS = 0
-LOOP_KEY_TIMES = "0;.125;.20;.291667;.366667;.458333;.533333;.625;.70;1"
-LOOP_SPLINES = ";".join([".42 0 .58 1"] * 9)
+LOOP_SECONDS = 35
+TRANSITION_SECONDS = 1.4
+PORTRAIT_SHIFT_Y = 10
+STATE_LABELS = (
+    "PORTRAIT // 1-BIT",
+    "SGODX // IDENTITY",
+    "WEB.CORE // FOUNDATION",
+    "REACT // FRONTEND",
+    "NODE.JS // BACKEND",
+    "DATA // SQL",
+    "AI.TOOLING // ASSISTED DEVELOPMENT",
+)
+STATE_COLORS = ("muted", "cyan", "cyan", "cyan", "green", "green", "cyan")
+HOLD_SECONDS = (3.0, 2.4, 2.4, 2.4, 2.4, 2.4, 2.5)
+
+
+def scan_timeline() -> tuple[tuple[float, ...], tuple[int, ...]]:
+    """One clock for positions, layer visibility, counter and captions."""
+    times, states = [0.0, HOLD_SECONDS[0]], [0, 0]
+    for state, hold in enumerate(HOLD_SECONDS[1:], 1):
+        arrive = round(times[-1] + TRANSITION_SECONDS, 2)
+        times.extend((arrive, round(arrive + hold, 2)))
+        states.extend((state, state))
+    times.extend((round(times[-1] + TRANSITION_SECONDS, 2), float(LOOP_SECONDS)))
+    states.extend((0, 0))
+    return tuple(times), tuple(states)
+
+
+def normalized_times(times: tuple[float, ...]) -> str:
+    return ";".join(f"{time / LOOP_SECONDS:.9f}".rstrip("0").rstrip(".") for time in times)
+
+
+LOOP_TIMES, LOOP_STATES = scan_timeline()
+LOOP_KEY_TIMES = normalized_times(LOOP_TIMES)
+LOOP_SPLINES = ";".join([".42 0 .58 1"] * (len(LOOP_TIMES) - 1))
+# Change the readout once, 75% through each transition, without crossfading text.
+READOUT_TIMES = (0.0,) + tuple(
+    round(LOOP_TIMES[i - 1] + 0.75 * (LOOP_TIMES[i] - LOOP_TIMES[i - 1]), 2)
+    for i in range(2, len(LOOP_TIMES) - 1, 2)
+) + (float(LOOP_SECONDS),)
+READOUT_STATES = tuple(range(len(STATE_LABELS))) + (0, 0)
+READOUT_KEY_TIMES = normalized_times(READOUT_TIMES)
 SEED = 7319
 
 ROWS = [
@@ -410,42 +450,106 @@ def make_leader(label: str, value: str, y: float, colors: dict[str, str]) -> str
     )
 
 
-def icon_caption(
-    label: str, opacity: str, colors: dict[str, str], color: str = "cyan"
-) -> str:
+def layer_animation(state: int) -> str:
+    values = ";".join("1" if target == state else "0" for target in LOOP_STATES)
     return (
-        f'<text x="242" y="535" text-anchor="middle" class="caption" '
-        f'opacity="0" fill="{colors[color]}">{escape(label)}'
-        f'<animate attributeName="opacity" values="{opacity}" keyTimes="{LOOP_KEY_TIMES}" '
-        f'dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
-        f'</text>'
+        f'<animate attributeName="opacity" values="{values}" keyTimes="{LOOP_KEY_TIMES}" '
+        f'dur="{LOOP_SECONDS}s" begin="0s" repeatCount="indefinite"/>'
     )
 
 
+def state_readouts(colors: dict[str, str], *, counter: bool = False) -> str:
+    parts = []
+    for state, label in enumerate(STATE_LABELS):
+        values = ";".join("1" if target == state else "0" for target in READOUT_STATES)
+        if counter:
+            text, x, y, anchor, css = f"{state + 1:02} / 07", 422, 120, "end", "micro state-counter"
+            color = colors["muted"]
+        else:
+            text, x, y, anchor, css = label, 242, 535, "middle", "caption"
+            color = colors[STATE_COLORS[state]]
+        parts.append(
+            f'<text x="{x}" y="{y}" text-anchor="{anchor}" class="{css}" '
+            f'data-state="{state}" opacity="{1 if state == 0 else 0}" fill="{color}">{escape(text)}'
+            f'<animate attributeName="opacity" values="{values}" keyTimes="{READOUT_KEY_TIMES}" '
+            f'calcMode="discrete" dur="{LOOP_SECONDS}s" begin="0s" repeatCount="indefinite"/>'
+            '</text>'
+        )
+    return "\n".join(parts)
+
+
+def match_points(
+    source: list[tuple[float, float]], target: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """Minimum total squared travel distance via a deterministic assignment.
+
+    Reorders points only: each approved symbol keeps its complete point set.
+    The closing transition explicitly returns every particle to its own origin.
+    """
+    count = len(source)
+    costs = [[(x - tx) ** 2 + (y - ty) ** 2 for tx, ty in target] for x, y in source]
+    u, v = [0.0] * (count + 1), [0.0] * (count + 1)
+    assigned, previous = [0] * (count + 1), [0] * (count + 1)
+    for row in range(1, count + 1):
+        assigned[0] = row
+        column = 0
+        minimum = [float("inf")] * (count + 1)
+        used = [False] * (count + 1)
+        while True:
+            used[column] = True
+            current = assigned[column]
+            delta, next_column = float("inf"), 0
+            for candidate in range(1, count + 1):
+                if used[candidate]:
+                    continue
+                reduced = costs[current - 1][candidate - 1] - u[current] - v[candidate]
+                if reduced < minimum[candidate]:
+                    minimum[candidate], previous[candidate] = reduced, column
+                if minimum[candidate] < delta:
+                    delta, next_column = minimum[candidate], candidate
+            for candidate in range(count + 1):
+                if used[candidate]:
+                    u[assigned[candidate]] += delta
+                    v[candidate] -= delta
+                else:
+                    minimum[candidate] -= delta
+            column = next_column
+            if assigned[column] == 0:
+                break
+        while column:
+            next_column = previous[column]
+            assigned[column] = assigned[next_column]
+            column = next_column
+    reordered = [target[0]] * count
+    for column in range(1, count + 1):
+        reordered[assigned[column] - 1] = target[column - 1]
+    return reordered
+
+
 def morph_dot(
-    origin: tuple[int, int],
-    sgodx: tuple[float, float],
-    react: tuple[float, float],
-    node: tuple[float, float],
+    states: tuple[tuple[float, float], ...],
     colors: dict[str, str],
 ) -> str:
-    targets = [origin, origin, sgodx, sgodx, react, react, node, node, origin, origin]
+    origin = states[0]
+    targets = [states[state] for state in LOOP_STATES]
     xs = ";".join(fmt(p[0] + 0.5) for p in targets)
     ys = ";".join(fmt(p[1] + 0.5) for p in targets)
+    fills = ";".join(colors["green" if state in (4, 5) else "cyan"] for state in LOOP_STATES)
+    opacity = ";".join("1" if 1 <= i < len(LOOP_TIMES) - 2 else "0" for i in range(len(LOOP_TIMES)))
     return (
         f'<circle cx="{fmt(origin[0] + 0.5)}" cy="{fmt(origin[1] + 0.5)}" r="1.22" opacity="0">'
         f'<animate attributeName="cx" values="{xs}" keyTimes="{LOOP_KEY_TIMES}" '
         f'calcMode="spline" keySplines="{LOOP_SPLINES}" dur="{LOOP_SECONDS}s" '
-        f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
+        f'begin="0s" repeatCount="indefinite"/>'
         f'<animate attributeName="cy" values="{ys}" keyTimes="{LOOP_KEY_TIMES}" '
         f'calcMode="spline" keySplines="{LOOP_SPLINES}" dur="{LOOP_SECONDS}s" '
-        f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
-        f'<animate attributeName="fill" values="{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["green"]};{colors["green"]};{colors["cyan"]};{colors["cyan"]}" '
+        f'begin="0s" repeatCount="indefinite"/>'
+        f'<animate attributeName="fill" values="{fills}" '
         f'keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" '
-        f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
-        f'<animate attributeName="opacity" values="0;1;1;1;1;1;1;1;0;0" '
+        f'begin="0s" repeatCount="indefinite"/>'
+        f'<animate attributeName="opacity" values="{opacity}" '
         f'keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" '
-        f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
+        f'begin="0s" repeatCount="indefinite"/>'
         f'</circle>'
     )
 
@@ -458,11 +562,12 @@ def build_svg(
     rng: random.Random,
 ) -> str:
     c = THEMES[theme_name]
-    sgodx, react, node = icon_sets
     origins = sample_evenly(rng.sample(dense_dots, min(MORPH_COUNT, len(dense_dots))), MORPH_COUNT)
-    sgodx = sample_evenly(sgodx, MORPH_COUNT)
-    react = sample_evenly(react, MORPH_COUNT)
-    node = sample_evenly(node, MORPH_COUNT)
+    states = [origins]
+    for points in icon_sets:
+        states.append(match_points(states[-1], sample_evenly(points, MORPH_COUNT)))
+    # Keep the portrait and its departing/returning traveller targets aligned.
+    states[0] = [(x, y + PORTRAIT_SHIFT_Y) for x, y in origins]
 
     buckets: list[list[tuple[int, int]]] = [[] for _ in range(20)]
     shuffled = list(dense_dots)
@@ -505,20 +610,22 @@ def build_svg(
         f'<path d="M459.5 101V551" stroke="{c["line_soft"]}"/>',
         f'<circle cx="60" cy="117" r="3.2" fill="{c["violet"]}"/>',
         f'<text x="72" y="121" class="section-title" fill="{c["text"]}">VISUAL.MAP</text>',
-        f'<text x="422" y="120" text-anchor="end" class="micro" fill="{c["muted"]}">01 / 02</text>',
+        state_readouts(c, counter=True),
         f'<path d="M56 136H427" stroke="{c["line_soft"]}"/>',
         f'<rect x="59" y="145" width="365" height="370" rx="10" fill="{c["bg"]}" stroke="{c["line"]}"/>',
         f'<path d="M72 160H411M72 500H411" stroke="{c["line_soft"]}" stroke-dasharray="1 6"/>',
         '<g clip-path="url(#portrait-window)">',
         '<g transform="translate(94 158)">',
-        f'<g fill="{c["portrait"]}" opacity="1">',
+        f'<g id="portrait-layer" fill="{c["portrait"]}" opacity="1">',
     ]
 
     for group_index, dots in enumerate(buckets):
         # Round-capped zero-length subpaths render each existing dither dot.
         # Chromium's accelerated renderer can drop near-zero h.001 strokes,
         # leaving the portrait blank even while its animated opacity is 1.
-        path_data = "".join(f"M{x + 0.5:.1f} {y + 0.5:.1f}h0" for x, y in dots)
+        path_data = "".join(
+            f"M{x + 0.5:.1f} {y + 0.5 + PORTRAIT_SHIFT_Y:.1f}h0" for x, y in dots
+        )
         parts.extend(
             [
                 f'<path d="{path_data}" fill="none" stroke="{c["portrait"]}" stroke-width=".84" stroke-linecap="round"/>',
@@ -527,30 +634,33 @@ def build_svg(
 
     parts.extend(
         [
-            f'<animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1;1" keyTimes="{LOOP_KEY_TIMES}" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
+            layer_animation(0),
             '</g>',
-            '<g opacity="0">',
+            '<g id="sgodx-layer" opacity="0">',
             f'<image x="38" y="120" width="224" height="100" preserveAspectRatio="none" href="data:image/png;base64,{sgodx_layers["image"]}" filter="url(#sgodx-soft-glow)"/>',
             f'<path d="{sgodx_layers["shards"]}" fill="none" stroke="#2563EB" stroke-width="1.05" stroke-linecap="round" opacity=".72"/>',
-            f'<animate attributeName="opacity" values="0;0;1;1;0;0;0;0;0;0" keyTimes="{LOOP_KEY_TIMES}" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
+            layer_animation(1),
             '</g>',
-            f'<g fill="{c["cyan"]}" opacity="1">',
+            f'<g id="traveller-layer" fill="{c["cyan"]}" opacity="1">',
         ]
     )
-    for origin, p_sgodx, p_react, p_node in zip(origins, sgodx, react, node):
-        parts.append(morph_dot(origin, p_sgodx, p_react, p_node, c))
+    for dot_states in zip(*states):
+        parts.append(morph_dot(dot_states, c))
+
+    parts.append('</g>')
+    for name, state in (("web", 2), ("data", 5), ("ai", 6)):
+        parts.extend((
+            f'<g id="module-{name}" opacity="0">',
+            module_overlay(name, c),
+            layer_animation(state),
+            '</g>',
+        ))
 
     parts.extend(
         [
             '</g>',
             '</g>',
-            '</g>',
-            f'<text x="242" y="535" text-anchor="middle" class="caption" fill="{c["muted"]}" opacity="1">PORTRAIT // 1-BIT',
-            f'<animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1;1" keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
-            '</text>',
-            icon_caption("SGODX // IDENTITY", "0;0;1;1;0;0;0;0;0;0", c),
-            icon_caption("REACT // INTERFACE", "0;0;0;0;1;1;0;0;0;0", c),
-            icon_caption("NODE.JS // RUNTIME", "0;0;0;0;0;0;1;1;0;0", c, "green"),
+            state_readouts(c),
             f'<text x="500" y="121" class="section-title" fill="{c["text"]}">SYSTEM.INFO</text>',
             f'<text x="1112" y="120" text-anchor="end" class="micro" fill="{c["muted"]}">SGODX / READOUT</text>',
             f'<path d="M495 136H1116" stroke="{c["line_soft"]}"/>',
@@ -618,7 +728,10 @@ def main() -> None:
     if len(portrait) < MORPH_COUNT:
         parser.error(f"Portrait mask produced only {len(portrait)} dots; check the source crop")
     sgodx, sgodx_layers = sgodx_geometry(logo_path)
-    icons = (sgodx, react_points(), node_points())
+    icons = (
+        sgodx, module_points("web"), react_points(), node_points(),
+        module_points("data"), module_points("ai"),
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, content in svg_logo_references().items():
         (root / "logos" / name).write_text(content, encoding="utf-8", newline="\n")
