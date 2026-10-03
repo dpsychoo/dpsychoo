@@ -26,8 +26,8 @@ WIDTH, HEIGHT = 1180, 610
 PORTRAIT_SIZE = (300, 340)
 MORPH_COUNT = 208
 LOOP_SECONDS = 24
-INTRO_SECONDS = 3.2
-LOOP_KEY_TIMES = "0;.083;.158;.25;.325;.417;.492;.583;.658;1"
+INTRO_SECONDS = 0
+LOOP_KEY_TIMES = "0;.125;.20;.291667;.366667;.458333;.533333;.625;.70;1"
 LOOP_SPLINES = ";".join([".42 0 .58 1"] * 9)
 SEED = 7319
 
@@ -416,7 +416,7 @@ def icon_caption(
     return (
         f'<text x="242" y="535" text-anchor="middle" class="caption" '
         f'opacity="0" fill="{colors[color]}">{escape(label)}'
-        f'<animate attributeName="opacity" values="{opacity}" keyTimes="0;.083;.105;.145;.158;.25;.325;.417;.492;.583;.658;1" '
+        f'<animate attributeName="opacity" values="{opacity}" keyTimes="{LOOP_KEY_TIMES}" '
         f'dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
         f'</text>'
     )
@@ -443,7 +443,7 @@ def morph_dot(
         f'<animate attributeName="fill" values="{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["cyan"]};{colors["green"]};{colors["green"]};{colors["cyan"]};{colors["cyan"]}" '
         f'keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" '
         f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
-        f'<animate attributeName="opacity" values="0;1;1;1;1;1;1;0;0;0" '
+        f'<animate attributeName="opacity" values="0;1;1;1;1;1;1;1;0;0" '
         f'keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" '
         f'begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>'
         f'</circle>'
@@ -515,25 +515,24 @@ def build_svg(
     ]
 
     for group_index, dots in enumerate(buckets):
-        path_data = "".join(f"M{x + 0.5:.1f} {y + 0.5:.1f}h.001" for x, y in dots)
-        delay = max(0.02, min(2.65, group_index * 0.135 + rng.uniform(-0.075, 0.075)))
+        # Round-capped zero-length subpaths render each existing dither dot.
+        # Chromium's accelerated renderer can drop near-zero h.001 strokes,
+        # leaving the portrait blank even while its animated opacity is 1.
+        path_data = "".join(f"M{x + 0.5:.1f} {y + 0.5:.1f}h0" for x, y in dots)
         parts.extend(
             [
-                f'<path d="{path_data}" fill="none" stroke="{c["portrait"]}" stroke-width=".84" stroke-linecap="round" opacity="1">',
-                f'<set attributeName="opacity" to="0" begin="0s" dur="{delay:.3f}s"/>',
-                f'<animate attributeName="opacity" from="0" to="1" begin="{delay:.3f}s" dur=".24s" fill="freeze"/>',
-                '</path>',
+                f'<path d="{path_data}" fill="none" stroke="{c["portrait"]}" stroke-width=".84" stroke-linecap="round"/>',
             ]
         )
 
     parts.extend(
         [
-            f'<animate attributeName="opacity" values="1;1;.17;.17;1;1" keyTimes="0;.083;.158;.583;.658;1" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
+            f'<animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1;1" keyTimes="{LOOP_KEY_TIMES}" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
             '</g>',
             '<g opacity="0">',
             f'<image x="38" y="120" width="224" height="100" preserveAspectRatio="none" href="data:image/png;base64,{sgodx_layers["image"]}" filter="url(#sgodx-soft-glow)"/>',
             f'<path d="{sgodx_layers["shards"]}" fill="none" stroke="#2563EB" stroke-width="1.05" stroke-linecap="round" opacity=".72"/>',
-            f'<animate attributeName="opacity" values="0;0;.22;.82;1;1;.78;0;0" keyTimes="0;.083;.105;.145;.158;.25;.30;.325;1" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
+            f'<animate attributeName="opacity" values="0;0;1;1;0;0;0;0;0;0" keyTimes="{LOOP_KEY_TIMES}" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
             '</g>',
             f'<g fill="{c["cyan"]}" opacity="1">',
         ]
@@ -549,9 +548,9 @@ def build_svg(
             f'<text x="242" y="535" text-anchor="middle" class="caption" fill="{c["muted"]}" opacity="1">PORTRAIT // 1-BIT',
             f'<animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1;1" keyTimes="{LOOP_KEY_TIMES}" calcMode="discrete" dur="{LOOP_SECONDS}s" begin="{INTRO_SECONDS}s" repeatCount="indefinite"/>',
             '</text>',
-            icon_caption("SGODX // IDENTITY", "0;0;0;.4;1;1;0;0;0;0;0;0", c),
-            icon_caption("REACT // INTERFACE", "0;0;0;0;0;0;.4;1;1;0;0;0", c),
-            icon_caption("NODE.JS // RUNTIME", "0;0;0;0;0;0;0;0;.4;1;0;0", c, "green"),
+            icon_caption("SGODX // IDENTITY", "0;0;1;1;0;0;0;0;0;0", c),
+            icon_caption("REACT // INTERFACE", "0;0;0;0;1;1;0;0;0;0", c),
+            icon_caption("NODE.JS // RUNTIME", "0;0;0;0;0;0;1;1;0;0", c, "green"),
             f'<text x="500" y="121" class="section-title" fill="{c["text"]}">SYSTEM.INFO</text>',
             f'<text x="1112" y="120" text-anchor="end" class="micro" fill="{c["muted"]}">SGODX / READOUT</text>',
             f'<path d="M495 136H1116" stroke="{c["line_soft"]}"/>',
