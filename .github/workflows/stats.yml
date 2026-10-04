@@ -1,0 +1,91 @@
+name: Update GitHub Stats
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v4
+
+      - name: Generate dark stats card
+        uses: stats-organization/github-readme-stats-action@v2
+        with:
+          card: stats
+          options: "username=dpsychoo&show_icons=true&include_all_commits=true&hide_rank=true&bg_color=0A101F&title_color=22D3EE&icon_color=A78BFA&text_color=94A3B8&border_color=0A101F&hide_border=true"
+          path: profile/stats-dark.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Generate light stats card
+        uses: stats-organization/github-readme-stats-action@v2
+        with:
+          card: stats
+          options: "username=dpsychoo&show_icons=true&include_all_commits=true&hide_rank=true&bg_color=FFFFFF&title_color=0891B2&icon_color=7C3AED&text_color=475569&border_color=FFFFFF&hide_border=true"
+          path: profile/stats-light.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Generate dark top languages card
+        uses: stats-organization/github-readme-stats-action@v2
+        with:
+          card: top-langs
+          options: "username=dpsychoo&layout=compact&langs_count=8&custom_title=Top%20Languages&bg_color=0A101F&title_color=22D3EE&icon_color=A78BFA&text_color=94A3B8&border_color=0A101F&hide_border=true"
+          path: profile/languages-dark.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Generate light top languages card
+        uses: stats-organization/github-readme-stats-action@v2
+        with:
+          card: top-langs
+          options: "username=dpsychoo&layout=compact&langs_count=8&custom_title=Top%20Languages&bg_color=FFFFFF&title_color=0891B2&icon_color=7C3AED&text_color=475569&border_color=FFFFFF&hide_border=true"
+          path: profile/languages-light.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Set primary metric value color
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path, value_color in (
+              (Path("profile/stats-dark.svg"), "#F8FAFC"),
+              (Path("profile/stats-light.svg"), "#0F172A"),
+          ):
+              svg = path.read_text(encoding="utf-8")
+              closing_style = "</style>"
+              if closing_style not in svg:
+                  raise SystemExit(f"Expected an SVG style block in {path}")
+              value_style = f".stat[data-testid] {{ fill: {value_color}; }}\n"
+              path.write_text(svg.replace(closing_style, value_style + closing_style, 1), encoding="utf-8")
+          PY
+
+      - name: Commit generated cards when changed
+        shell: bash
+        run: |
+          git add -- \
+            profile/stats-dark.svg \
+            profile/stats-light.svg \
+            profile/languages-dark.svg \
+            profile/languages-light.svg
+          if git diff --cached --quiet -- \
+            profile/stats-dark.svg \
+            profile/stats-light.svg \
+            profile/languages-dark.svg \
+            profile/languages-light.svg; then
+            echo "Generated cards are unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update GitHub stats cards"
+          git push
