@@ -80,3 +80,10 @@
     src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/projects/projects-light.svg">
 </picture>
 <!-- ===== SOCIAL BADGES ===== -->
+<div align="center">
+  <br />
+  <a href="https://www.linkedin.com/in/david-castro-b6a287240"><img src="https://img.shields.io/badge/-LinkedIn-0A101F?style=for-the-badge&amp;logo=linkedin&amp;logoColor=22D3EE&amp;labelColor=0A101F" alt="LinkedIn" height="28" /></a>&#160;&#160;
+  <a href="https://www.instagram.com/sgodx_/"><img src="https://img.shields.io/badge/-Instagram-0A101F?style=for-the-badge&amp;logo=instagram&amp;logoColor=A78BFA&amp;labelColor=0A101F" alt="Instagram" height="28" /></a>&#160;&#160;
+  <a href="https://x.com/sgodx_"><img src="https://img.shields.io/badge/-X-0A101F?style=for-the-badge&amp;logo=x&amp;logoColor=F8FAFC&amp;labelColor=0A101F" alt="X" height="28" /></a>&#160;&#160;
+  <a href="mailto:phoenix6ccxr@gmail.com"><img src="https://img.shields.io/badge/-Email-0A101F?style=for-the-badge&amp;logo=gmail&amp;logoColor=10B981&amp;labelColor=0A101F" alt="Email" height="28" /></a>
+</div>
