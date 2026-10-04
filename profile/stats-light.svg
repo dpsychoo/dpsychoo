@@ -100,7 +100,7 @@
       }
     
           
-        .stat[data-testid] { fill: #F8FAFC; }
+        .stat[data-testid] { fill: #0F172A; }
 </style>
 
         

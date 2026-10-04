@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out profile repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Generate dark stats card
         uses: stats-organization/github-readme-stats-action@v2
