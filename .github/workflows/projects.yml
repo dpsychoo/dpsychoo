@@ -1,0 +1,46 @@
+name: Generate Featured Projects
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "projects.json"
+      - "project-logos/**"
+      - ".github/scripts/fetch_data.py"
+      - ".github/scripts/generate_projects.py"
+      - ".github/workflows/projects.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v4
+
+      - name: Fetch live project metadata
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/fetch_data.py --config projects.json --output "$RUNNER_TEMP/projects-merged.json"
+
+      - name: Generate dark and light project panels
+        run: >-
+          python3 .github/scripts/generate_projects.py
+          --input "$RUNNER_TEMP/projects-merged.json"
+          --output-dir "$RUNNER_TEMP/projects-dist"
+
+      - name: Publish panels to the projects branch
+        uses: crazy-max/ghaction-github-pages@v5
+        with:
+          target_branch: projects
+          build_dir: ${{ runner.temp }}/projects-dist
+          absolute_build_dir: true
+          allow_empty_commit: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -67,4 +67,16 @@
     src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg">
 </picture>
 <!-- ===== PROJECTS ===== -->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/projects/projects.svg">
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/projects/projects-light.svg">
+  <img
+    width="100%"
+    alt="David Castro featured projects"
+    src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/projects/projects-light.svg">
+</picture>
 <!-- ===== SOCIAL BADGES ===== -->
