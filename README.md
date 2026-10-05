@@ -57,14 +57,14 @@
 <picture>
   <source
     media="(prefers-color-scheme: dark)"
-    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-dark.svg">
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-dark.svg?v=2">
   <source
     media="(prefers-color-scheme: light)"
-    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg">
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
   <img
     width="100%"
     alt="David Castro contribution activity"
-    src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg">
+    src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
 </picture>
 <!-- ===== PROJECTS ===== -->
 <picture>
