@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 WIDTH = 1180
@@ -151,26 +152,42 @@ def language_color(name: str) -> str:
 def validate_project(project: Any, index: int) -> dict[str, Any]:
     if not isinstance(project, dict):
         raise ValueError(f"merged project {index} must be an object")
-    for field in ("name", "repo", "logo", "description", "tags", "stars", "pushed_at", "languages"):
+    for field in ("name", "logo", "description", "tags", "stars", "pushed_at", "languages"):
         if field not in project:
             raise ValueError(f"merged project {index} is missing {field!r}")
     if not isinstance(project["name"], str) or not project["name"].strip():
         raise ValueError(f"merged project {index} has an invalid name")
-    if not isinstance(project["repo"], str) or not REPO_PATTERN.fullmatch(project["repo"]):
+    repo = project.get("repo")
+    if repo is not None and (not isinstance(repo, str) or not REPO_PATTERN.fullmatch(repo)):
         raise ValueError(f"merged project {index} has an invalid repository identifier")
+    demo_url = project.get("demo_url")
+    if demo_url is not None:
+        if not isinstance(demo_url, str):
+            raise ValueError(f"merged project {index} has an invalid demo_url")
+        parsed = urlparse(demo_url)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+                or parsed.password is not None or any(char.isspace() or ord(char) < 32 for char in demo_url)):
+            raise ValueError(f"merged project {index} has an invalid public HTTPS demo_url")
+    if not repo and not demo_url:
+        raise ValueError(f"merged project {index} requires a public repo or demo_url")
     if not isinstance(project["description"], str):
         raise ValueError(f"merged project {index} has an invalid description")
     if not isinstance(project["tags"], list):
         raise ValueError(f"merged project {index} tags must be an array")
     if not isinstance(project["languages"], dict):
         project["languages"] = {}
-    project["stars"] = max(0, int(project.get("stars", 0) or 0))
+    project["stars"] = max(0, int(project["stars"])) if project["stars"] is not None and repo else None
+    if not repo:
+        project["pushed_at"] = None
+        project["languages"] = {}
+        project["github_description"] = ""
     return project
 
 
 def logo_markup(project: dict[str, Any], root: Path, x: int, y: int, theme: dict[str, str]) -> str:
     size = 62
     logo = project.get("logo")
+    identity = project.get("repo") or project["name"]
     if isinstance(logo, str) and logo.strip():
         relative = Path(logo)
         resolved = (root / relative).resolve()
@@ -178,14 +195,14 @@ def logo_markup(project: dict[str, Any], root: Path, x: int, y: int, theme: dict
         try:
             resolved.relative_to(allowed)
         except ValueError:
-            print(f"Warning: {project['repo']} logo must be inside project-logos; using monogram", file=sys.stderr)
+            print(f"Warning: {identity} logo must be inside project-logos; using monogram", file=sys.stderr)
         else:
             mime, _ = mimetypes.guess_type(resolved.name)
             if mime in {"image/png", "image/jpeg", "image/webp"} and resolved.is_file():
                 try:
                     image_bytes = resolved.read_bytes()
                 except OSError as error:
-                    print(f"Warning: could not read {resolved.name} for {project['repo']}; using monogram: {error}", file=sys.stderr)
+                    print(f"Warning: could not read {resolved.name} for {identity}; using monogram: {error}", file=sys.stderr)
                 else:
                     if image_bytes:
                         data = base64.b64encode(image_bytes).decode("ascii")
@@ -197,12 +214,12 @@ def logo_markup(project: dict[str, Any], root: Path, x: int, y: int, theme: dict
                             f'<image x="{x + padding}" y="{y + padding}" width="{image_size}" height="{image_size}" '
                             f'preserveAspectRatio="xMidYMid meet" href="data:{mime};base64,{data}"/>'
                         )
-                    print(f"Warning: {resolved.name} is empty for {project['repo']}; using monogram", file=sys.stderr)
+                    print(f"Warning: {resolved.name} is empty for {identity}; using monogram", file=sys.stderr)
             else:
-                print(f"Warning: {project['repo']} logo is unavailable or not a local PNG/JPEG/WebP; using monogram", file=sys.stderr)
+                print(f"Warning: {identity} logo is unavailable or not a local PNG/JPEG/WebP; using monogram", file=sys.stderr)
 
     monogram = truncate(str(project.get("monogram") or ""), 4) or "PRJ"
-    accent = theme["cyan"] if hashlib.sha1(project["repo"].encode("utf-8")).digest()[0] % 2 else theme["violet"]
+    accent = theme["cyan"] if hashlib.sha1(identity.encode("utf-8")).digest()[0] % 2 else theme["violet"]
     return (
         f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="10" '
         f'fill="{theme["panel_alt"]}" stroke="{theme["border_soft"]}"/>'
@@ -230,16 +247,18 @@ def tag_markup(tags: list[Any], x: int, y: int, theme: dict[str, str]) -> str:
     return "".join(parts)
 
 
-def language_markup(languages: dict[str, Any], x: int, y: int, theme: dict[str, str]) -> str:
+def language_markup(languages: dict[str, Any], x: int, y: int, theme: dict[str, str], public_repo: bool = True) -> str:
     valid = [(name, max(0, int(value))) for name, value in languages.items() if isinstance(name, str)]
     valid.sort(key=lambda pair: (-pair[1], pair[0].lower()))
     total = sum(value for _, value in valid)
     width = 222
     if total <= 0:
+        heading = "LANGUAGE MIX" if public_repo else "SOURCE CODE"
+        unavailable = "Language data unavailable" if public_repo else "Not publicly available"
         return (
-            f'<text x="{x}" y="{y}" class="label" fill="{theme["muted"]}">LANGUAGE MIX</text>'
+            f'<text x="{x}" y="{y}" class="label" fill="{theme["muted"]}">{heading}</text>'
             f'<rect x="{x}" y="{y + 8}" width="{width}" height="5" rx="2.5" fill="{theme["track"]}"/>'
-            f'<text x="{x}" y="{y + 29}" class="tiny" fill="{theme["quiet"]}">Language data unavailable</text>'
+            f'<text x="{x}" y="{y + 29}" class="tiny" fill="{theme["quiet"]}">{unavailable}</text>'
         )
 
     visible = valid[:3]
@@ -275,19 +294,24 @@ def language_markup(languages: dict[str, Any], x: int, y: int, theme: dict[str, 
 def card_markup(project: dict[str, Any], index: int, total_projects: int, row: int, col: int, theme: dict[str, str], root: Path) -> str:
     x = CARD_X[col]
     y = CARD_TOP + row * (CARD_HEIGHT + ROW_GAP)
-    repo = project["repo"]
+    repo = project.get("repo")
+    destination = project.get("demo_url") or f"https://github.com/{repo}"
     title = truncate(project["name"].strip(), 42)
     description = project["description"].strip() or project.get("github_description", "")
     desc_one, desc_two = wrap_description(description)
     updated, recent = relative_updated(project.get("pushed_at"))
-    activity = "ACTIVE" if recent else "QUIET"
+    activity = ("ACTIVE" if recent else "QUIET") if project.get("pushed_at") else "UNKNOWN"
     activity_color = theme["active"] if recent else theme["quiet"]
-    stars = f"{project.get('stars', 0):,}"
+    stars = f"{project['stars']:,}" if project.get("stars") is not None else "n/a"
+    metric = f"★ {stars}"
+    if not repo:
+        metric, updated, activity = "LIVE APP", "No public repo", "PUBLIC DEMO"
+        activity_color = theme["violet"]
     tags = project.get("tags", [])
     card_id = f"card-{index + 1}"
-    repo_text = truncate(repo, 57)
+    repo_text = truncate(repo or urlparse(destination).netloc, 57)
     logo = logo_markup(project, root, x + 20, y + 49, theme)
-    language = language_markup(project.get("languages", {}), x + 310, y + 165, theme)
+    language = language_markup(project.get("languages", {}), x + 310, y + 165, theme, public_repo=bool(repo))
 
     return f'''<g class="card" id="{card_id}">
       <rect x="{x}" y="{y}" width="{CARD_WIDTH}" height="{CARD_HEIGHT}" rx="11" fill="{theme['panel']}" stroke="{theme['border']}"/>
@@ -296,7 +320,7 @@ def card_markup(project: dict[str, Any], index: int, total_projects: int, row: i
       <circle cx="{x + 18}" cy="{y + 18}" r="3" fill="{theme['active']}"/>
       <circle cx="{x + 29}" cy="{y + 18}" r="2.5" fill="{theme['quiet']}"/>
       <text x="{x + 40}" y="{y + 22}" class="repo" fill="{theme['muted']}">{xml(repo_text)}</text>
-      <a href="https://github.com/{xml(repo)}" target="_blank" rel="noopener noreferrer">
+      <a href="{xml(destination)}" target="_blank" rel="noopener noreferrer">
         <text x="{x + CARD_WIDTH - 18}" y="{y + 22}" text-anchor="end" class="repo link" fill="{theme['cyan']}">OPEN ↗</text>
       </a>
       {logo}
@@ -305,7 +329,7 @@ def card_markup(project: dict[str, Any], index: int, total_projects: int, row: i
       <text x="{x + 100}" y="{y + 105}" class="description" fill="{theme['muted']}">{xml(desc_two)}</text>
       {tag_markup(tags, x + 20, y + 125, theme)}
       <path d="M{x + 20} {y + 155}H{x + CARD_WIDTH - 20}" stroke="{theme['border_soft']}"/>
-      <text x="{x + 22}" y="{y + 179}" class="metric" fill="{theme['text']}">★ {xml(stars)}</text>
+      <text x="{x + 22}" y="{y + 179}" class="metric" fill="{theme['text']}">{xml(metric)}</text>
       <text x="{x + 110}" y="{y + 179}" class="small" fill="{theme['muted']}">{xml(updated)}</text>
       <circle cx="{x + 28}" cy="{y + 202}" r="3" fill="{activity_color}"/>
       <text x="{x + 39}" y="{y + 205}" class="label" fill="{activity_color}">{activity}</text>
@@ -325,7 +349,7 @@ def generate_svg(projects: list[dict[str, Any]], mode: str, root: Path) -> str:
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{WIDTH}" height="{height}" viewBox="0 0 {WIDTH} {height}" role="img" aria-labelledby="title description">
   <title id="title">David Castro featured projects — {mode} theme</title>
-  <desc id="description">A terminal-inspired list of featured projects with live GitHub activity and language distribution.</desc>
+  <desc id="description">A terminal-inspired list of public applications and projects, with GitHub activity and language distribution where available.</desc>
   <style>
     text {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
     .repo {{ font-size: 10px; letter-spacing: .12px; }}

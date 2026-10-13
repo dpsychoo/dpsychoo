@@ -37,6 +37,20 @@ def normalize_repo(value: Any) -> str:
     return repo
 
 
+def normalize_demo_url(value: Any) -> str | None:
+    """Accept an optional public HTTPS application URL without credentials."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("demo_url must be an HTTPS URL or null")
+    url = value.strip()
+    parsed = urlparse(url)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+            or parsed.password is not None or any(char.isspace() or ord(char) < 32 for char in url)):
+        raise ValueError("demo_url must be a public HTTPS URL without credentials")
+    return url
+
+
 def request_json(url: str, token: str | None) -> Any:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -69,7 +83,7 @@ def read_projects(path: Path) -> list[dict[str, Any]]:
     for index, item in enumerate(data, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"project {index} must be an object")
-        for field in ("name", "repo", "logo", "description", "tags"):
+        for field in ("name", "logo", "description", "tags"):
             if field not in item:
                 raise ValueError(f"project {index} is missing {field!r}")
         if not isinstance(item["name"], str) or not item["name"].strip():
@@ -81,32 +95,48 @@ def read_projects(path: Path) -> list[dict[str, Any]]:
         if not isinstance(item["tags"], list) or not all(isinstance(tag, str) for tag in item["tags"]):
             raise ValueError(f"project {index} tags must be an array of strings")
         project = dict(item)
-        project["repo"] = normalize_repo(item["repo"])
+        project["repo"] = normalize_repo(item["repo"]) if item.get("repo") is not None else None
+        project["demo_url"] = normalize_demo_url(item.get("demo_url"))
+        if not project["repo"] and not project["demo_url"]:
+            raise ValueError(f"project {index} requires a public repo or demo_url")
         projects.append(project)
     return projects
 
 
 def fetch_project(project: dict[str, Any], token: str | None) -> dict[str, Any]:
-    repo = project["repo"]
+    repo = project.get("repo")
     merged = {
         **project,
-        "stars": 0,
+        "stars": None,
         "pushed_at": None,
         "languages": {},
         "github_description": "",
     }
 
+    # Demo-only projects have no public source metadata to request or publish.
+    if not repo:
+        return merged
+
     try:
         repository = request_json(f"{API_ROOT}/{repo}", token)
         if not isinstance(repository, dict):
             raise ValueError("repository endpoint returned an unexpected response")
-        merged["stars"] = max(0, int(repository.get("stargazers_count", 0) or 0))
-        pushed_at = repository.get("pushed_at")
-        merged["pushed_at"] = pushed_at if isinstance(pushed_at, str) else None
-        remote_description = repository.get("description")
-        merged["github_description"] = remote_description if isinstance(remote_description, str) else ""
     except Exception as error:
         warn(repo, "repository metadata", error)
+        return merged
+
+    # A token may see private repositories; never publish their metadata.
+    if repository.get("private") is not False:
+        merged["repo"] = None
+        if not merged.get("demo_url"):
+            raise ValueError("non-public repository requires a public demo_url")
+        return merged
+    stars = repository.get("stargazers_count")
+    merged["stars"] = stars if type(stars) is int and stars >= 0 else None
+    pushed_at = repository.get("pushed_at")
+    merged["pushed_at"] = pushed_at if isinstance(pushed_at, str) else None
+    remote_description = repository.get("description")
+    merged["github_description"] = remote_description if isinstance(remote_description, str) else ""
 
     try:
         languages = request_json(f"{API_ROOT}/{repo}/languages", token)
