@@ -1,7 +1,7 @@
 [
   {
     "name": "SGX VI",
-    "repo": "dpsychoo/gta-vi-generator",
+    "demo_url": "https://create.sgodx.com/",
     "logo": "project-logos/sgx-vi.png",
     "monogram": "SGX",
     "description": "Interactive image-generation platform built with Astro, React and Supabase.",
