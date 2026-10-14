@@ -1,6 +1,6 @@
 # STACK & SIGNALS
 
-The README uses standard `<picture>` and `<source media>` selection to load pre-rendered SVG layouts without depending on CSS that GitHub may strip. At widths of 768 pixels and above, the 920-pixel SVG places the Product & Frontend and Platform, Data & Automation radar cards side by side below the centered stack panel. At 767 pixels and below, a 460-pixel SVG stacks the two radar cards vertically. Dark and light variants are generated for both layouts. The contribution card remains below the stack-and-radar image.
+The README uses standard `<picture>` and `<source media>` selection to load pre-rendered SVG assets without depending on CSS that GitHub may strip. The stack-only asset contains the MY PERFECT STACK panel. The existing Developer Signals contribution card follows it, then a separate radar-pair asset. At widths of 768 pixels and above, the 920-pixel radar SVG places Product & Frontend Engineering beside Platform, Data & Automation. At 767 pixels and below, a 328-pixel radar SVG stacks the equal-height cards vertically and wraps longer axis labels for legibility. Dark and light variants are generated for the stack and both radar layouts. The README places the radar pair immediately before the Contribution Snake.
 
 ## Evidence and scope
 
@@ -25,7 +25,7 @@ Radial distance encodes categorical focus priority: CORE is outermost, SUPPORTIN
 
 The README includes a text explanation, and the SVG title and description carry accessible context. The [dimension-by-dimension evidence notes](radar-evidence.md) distinguish the approved self-description from public evidence and document its limits.
 
-The wide and narrow visual variants are rendered from the same configuration and radar component. The classification values, card artwork, and stack icons do not vary by viewport; only the card positions and SVG dimensions change.
+The stack-only asset and four radar-pair assets are rendered from the same configuration. Radar classifications and card artwork are the same across themes and viewports; only theme colors, card positions, and narrow label wrapping vary. The charts are separate from both the stack artwork and the Developer Signals statistics card, so the README can place them immediately above the Contribution Snake without duplicating them.
 ## Contribution statistics
 
 The generator requests only `date` and `contributionCount` from `user(login: "dpsychoo").contributionsCollection.contributionCalendar`, plus `totalContributions` to validate the day rows. It does not request contribution records, repository names, or private source details. The query does not request private contributions. GitHub documents private and internal contributions as requiring the optional `read:user` scope; the available local GitHub CLI token did not have that scope, and the public calendar query succeeded.

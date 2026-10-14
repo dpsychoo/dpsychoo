@@ -11,6 +11,7 @@ import {
   dateInTimeZone,
   getReportWindow,
   preserveOrMarkUnavailable,
+  renderRadarPairSvg,
   renderStackSvg,
   renderStatsSvg,
   renderUnavailableStatsSvg,
@@ -130,9 +131,15 @@ test('invalid, duplicate, missing, and inconsistent calendar data is rejected', 
   assert.throws(() => computeMetrics(negative, { asOfDate, windowStart }), /invalid contribution count/);
 });
 
+test('stack artwork is independent from the approved qualitative radar cards', () => {
+  const stack = renderStackSvg('dark', config);
+  assert.match(stack, /MY PERFECT STACK/);
+  assert.doesNotMatch(stack, /PRODUCT &amp; FRONTEND ENGINEERING|PLATFORM, DATA &amp; AUTOMATION/);
+  assert.equal((stack.match(/<svg x="/g) ?? []).length, 16);
+});
+
 test('approved radars render qualitative classifications without score placeholders or external assets', () => {
-  const svg = renderStackSvg('dark', config);
-  assert.match(svg, /MY PERFECT STACK/);
+  const svg = renderRadarPairSvg('dark', config, 'wide');
   assert.match(svg, /PRODUCT &amp; FRONTEND ENGINEERING/);
   assert.match(svg, /PLATFORM, DATA &amp; AUTOMATION/);
   assert.match(svg, />APPROVED</);
@@ -149,35 +156,56 @@ test('approved radars render qualitative classifications without score placehold
   }), /invalid focus radar review status/);
 });
 
-test('wide radars render side by side and the narrow variant stacks them', () => {
-  const wide = renderStackSvg('dark', config, 'wide');
-  assert.match(wide, /width="920" height="804" viewBox="0 0 920 804"/);
-  assert.match(wide, /<rect x="16" y="444" width="428" height="344"/);
-  assert.match(wide, /<rect x="476" y="444" width="428" height="344"/);
+test('wide radar cards are equal side by side and the narrow pair stacks at mobile width', () => {
+  const wide = renderRadarPairSvg('dark', config, 'wide');
+  assert.match(wide, /width="920" height="376" viewBox="0 0 920 376"/);
+  assert.match(wide, /<rect x="16" y="16" width="428" height="344"/);
+  assert.match(wide, /<rect x="476" y="16" width="428" height="344"/);
 
-  const narrow = renderStackSvg('light', config, 'stacked');
-  assert.match(narrow, /width="460" height="1172" viewBox="0 0 460 1172"/);
-  assert.match(narrow, /<rect x="16" y="444" width="428" height="344"/);
-  assert.match(narrow, /<rect x="16" y="804" width="428" height="344"/);
+  const narrow = renderRadarPairSvg('light', config, 'narrow');
+  assert.match(narrow, /width="328" height="736" viewBox="0 0 328 736"/);
+  assert.match(narrow, /<rect x="0" y="16" width="328" height="344"/);
+  assert.match(narrow, /<rect x="0" y="376" width="328" height="344"/);
+  assert.match(narrow, />Responsive</);
+  assert.match(narrow, />Interfaces</);
 });
 
-test('README places GitHub stats after project links and selects responsive radar assets', () => {
+test('README places stack, Developer Signals, radar pair, and snake in the requested order', () => {
   const snakeIndex = profileReadme.indexOf('<!-- ===== CONTRIBUTION SNAKE ===== -->');
   const itachiIndex = profileReadme.indexOf('https://github.com/dpsychoo/Itachi_SGODX');
+  const projectIndex = profileReadme.indexOf('<!-- ===== PROJECTS ===== -->');
   const githubStatsIndex = profileReadme.indexOf('<!-- ===== GITHUB STATS ===== -->');
   const stackIndex = profileReadme.indexOf('<!-- ===== STACK & SIGNALS ===== -->');
   const developerSignalsIndex = profileReadme.indexOf('profile/developer-stats-dark.svg');
+  const radarIndex = profileReadme.indexOf('profile/radar-pair-narrow-dark.svg');
+  const radarEnd = profileReadme.indexOf('</p>', radarIndex) + '</p>'.length;
+  const socialIndex = profileReadme.indexOf('<!-- ===== SOCIAL BADGES ===== -->');
 
-  assert.ok(snakeIndex < itachiIndex && itachiIndex < githubStatsIndex && githubStatsIndex < stackIndex);
-  assert.ok(stackIndex < developerSignalsIndex);
+  assert.ok(projectIndex < itachiIndex && itachiIndex < githubStatsIndex);
+  assert.ok(githubStatsIndex < stackIndex && stackIndex < developerSignalsIndex);
+  assert.ok(developerSignalsIndex < radarIndex && radarIndex < snakeIndex && snakeIndex < socialIndex);
+  assert.equal(profileReadme.slice(radarEnd, snakeIndex).trim(), '');
+  const radarPictureStart = profileReadme.lastIndexOf('<picture>', radarIndex);
+  const radarPictureEnd = profileReadme.indexOf('</picture>', radarIndex) + '</picture>'.length;
+  const radarPicture = profileReadme.slice(radarPictureStart, radarPictureEnd);
+  assert.ok(radarPictureStart >= 0 && radarPictureEnd > radarPictureStart);
+  assert.doesNotMatch(profileReadme.replace(radarPicture, ''), /radar-pair-/);
   for (const asset of [
     'profile/stats-dark.svg',
     'profile/stats-light.svg',
     'profile/languages-dark.svg',
     'profile/languages-light.svg',
-    'profile/stack-signals-narrow-dark.svg',
-    'profile/stack-signals-narrow-light.svg',
+    'profile/stack-signals-dark.svg',
+    'profile/stack-signals-light.svg',
+    'profile/radar-pair-dark.svg',
+    'profile/radar-pair-light.svg',
+    'profile/radar-pair-narrow-dark.svg',
+    'profile/radar-pair-narrow-light.svg',
   ]) assert.ok(profileReadme.includes(asset), `README must reference ${asset}`);
+  for (const asset of ['radar-pair-dark.svg', 'radar-pair-light.svg', 'radar-pair-narrow-dark.svg', 'radar-pair-narrow-light.svg']) {
+    const sourceReference = `srcset="./profile/${asset}"`;
+    assert.equal(profileReadme.split(sourceReference).length - 1, 1, `README must include ${sourceReference} once`);
+  }
 });
 
 test('radar config uses only qualitative levels and carries the owner-approved focus', () => {
@@ -209,13 +237,11 @@ test('radar config uses only qualitative levels and carries the owner-approved f
 });
 
 test('stack rows inline sixteen local technology icons with no text pills or remote loads', () => {
-  for (const layout of ['wide', 'stacked']) {
-    const svg = renderStackSvg('dark', config, layout);
-    assert.equal((svg.match(/<svg x="/g) ?? []).length, 16);
-    assert.match(svg, /viewBox="0 0 24 24"[^>]*fill="none" stroke="currentColor"/);
-    assert.doesNotMatch(svg, />(?:TS|JS|WG|API|PG|GH|VS)<\/text>/);
-    assert.doesNotMatch(svg, /(?:href|xlink:href)=/i);
-  }
+  const svg = renderStackSvg('dark', config);
+  assert.equal((svg.match(/<svg x="/g) ?? []).length, 16);
+  assert.match(svg, /viewBox="0 0 24 24"[^>]*fill="none" stroke="currentColor"/);
+  assert.doesNotMatch(svg, />(?:TS|JS|WG|API|PG|GH|VS)<\/text>/);
+  assert.doesNotMatch(svg, /(?:href|xlink:href)=/i);
   assert.ok(config.stackGroups.flatMap(({ items }) => items).every(({ icon }) => typeof icon === 'string'));
 });
 

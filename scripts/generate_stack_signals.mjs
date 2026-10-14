@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -375,13 +375,13 @@ function chipMarkup(item, x, y, theme) {
   </g>`;
 }
 
-function radarCard(chart, x, y, theme, focusStatus) {
-  const cardWidth = 428;
+function radarCard(chart, x, y, theme, focusStatus, { compact = false } = {}) {
+  const cardWidth = compact ? 328 : 428;
   const cardHeight = 344;
   const cx = x + cardWidth / 2;
   const cy = y + 194;
-  const radius = 71;
-  const labelRadius = 101;
+  const radius = compact ? 57 : 71;
+  const labelRadius = compact ? 82 : 101;
   const axisCount = chart.axes.length;
   const angleAt = (index) => (-Math.PI / 2) + (Math.PI * 2 * index) / axisCount;
   const pointAt = (index, pointRadius) => {
@@ -393,17 +393,19 @@ function radarCard(chart, x, y, theme, focusStatus) {
     return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
   }).join(' ');
   const classificationColor = (classification) => theme[RADAR_LEVEL_COLORS[classification]];
+  const titleSize = compact ? 10.6 : 13;
 
   let markup = `${panel(x, y, cardWidth, cardHeight, theme)}
-    ${text(x + 16, y + 25, chart.title, { fill: theme.text, size: 13, weight: 700, letterSpacing: 0.6 })}
+    ${text(x + 16, y + 25, chart.title, { fill: theme.text, size: titleSize, weight: 700, letterSpacing: compact ? 0.25 : 0.6 })}
     <rect x="${x + cardWidth - 76}" y="${y + 11}" width="60" height="22" rx="11" fill="${theme.panelAlt}" stroke="${theme.border}" />
     ${text(x + cardWidth - 46, y + 26, focusStatus, { fill: theme.purple, size: 9, weight: 700, anchor: 'middle', letterSpacing: 0.6 })}`;
 
+  const legendColumn = compact ? 176 : 222;
   const legend = [
     { classification: 'CORE', x: x + 22, y: y + 50 },
-    { classification: 'SUPPORTING', x: x + 222, y: y + 50 },
+    { classification: 'SUPPORTING', x: x + legendColumn, y: y + 50 },
     { classification: 'EXPLORING', x: x + 22, y: y + 71 },
-    { classification: 'UNASSESSED', x: x + 222, y: y + 71 },
+    { classification: 'UNASSESSED', x: x + legendColumn, y: y + 71 },
   ];
   for (const item of legend) {
     const color = classificationColor(item.classification);
@@ -425,8 +427,22 @@ function radarCard(chart, x, y, theme, focusStatus) {
     const cos = Math.cos(angleAt(index));
     const anchor = cos > 0.24 ? 'start' : cos < -0.24 ? 'end' : 'middle';
     markup += `<line x1="${cx}" y1="${cy}" x2="${point.x.toFixed(1)}" y2="${point.y.toFixed(1)}" stroke="${theme.grid}" stroke-width="0.85" />`;
-    markup += text(label.x.toFixed(1), (label.y - 3).toFixed(1), axis.label, { fill: theme.muted, size: 12, weight: 600, anchor });
-    markup += text(label.x.toFixed(1), (label.y + 9).toFixed(1), axis.classification, { fill: classificationColor(axis.classification), size: 8.4, weight: 700, anchor, letterSpacing: 0.2 });
+    if (compact) {
+      const lines = [];
+      for (const word of axis.label.split(/\s+/)) {
+        const current = lines.at(-1);
+        if (current && `${current} ${word}`.length <= 15) lines[lines.length - 1] += ` ${word}`;
+        else lines.push(word);
+      }
+      const firstY = label.y - (lines.length > 1 ? 10 : 3);
+      lines.forEach((line, lineIndex) => {
+        markup += text(label.x.toFixed(1), (firstY + lineIndex * 11).toFixed(1), line, { fill: theme.muted, size: 11, weight: 600, anchor });
+      });
+      markup += text(label.x.toFixed(1), (label.y + (lines.length > 1 ? 15 : 9)).toFixed(1), axis.classification, { fill: classificationColor(axis.classification), size: 9, weight: 700, anchor, letterSpacing: 0.2 });
+    } else {
+      markup += text(label.x.toFixed(1), (label.y - 3).toFixed(1), axis.label, { fill: theme.muted, size: 12, weight: 600, anchor });
+      markup += text(label.x.toFixed(1), (label.y + 9).toFixed(1), axis.classification, { fill: classificationColor(axis.classification), size: 8.4, weight: 700, anchor, letterSpacing: 0.2 });
+    }
   });
 
   chart.axes.forEach((axis, index) => {
@@ -444,37 +460,37 @@ function radarCard(chart, x, y, theme, focusStatus) {
     markup += `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="${color}" stroke="${theme.background}" stroke-width="1.4"><title>${escapeXml(axis.label)} - ${axis.classification}</title></circle>`;
   });
   markup += `<circle cx="${cx}" cy="${cy}" r="2" fill="${theme.grid}" />`;
-  markup += text(cx, y + cardHeight - 11, 'DISTANCE SHOWS FOCUS PRIORITY ONLY - NOT PROFICIENCY OR PERFORMANCE', { fill: theme.quiet, size: 8.2, weight: 600, anchor: 'middle', letterSpacing: 0.15 });
+  const footer = compact ? 'FOCUS PRIORITY - NOT PROFICIENCY OR PERFORMANCE' : 'DISTANCE SHOWS FOCUS PRIORITY ONLY - NOT PROFICIENCY OR PERFORMANCE';
+  markup += text(cx, y + cardHeight - 11, footer, { fill: theme.quiet, size: compact ? 8.2 : 8.2, weight: 600, anchor: 'middle', letterSpacing: compact ? 0 : 0.15 });
   return markup;
 }
 
-export function renderStackSvg(themeName, config, layout = 'stacked') {
+function validateRenderConfig(themeName, config) {
   const theme = THEMES[themeName];
   if (!theme) throw new RangeError(`unknown theme: ${themeName}`);
-  if (!['wide', 'stacked'].includes(layout)) throw new RangeError(`unknown Stack & Signals layout: ${layout}`);
   const charts = config?.focusRadar?.charts;
   if (!Array.isArray(config?.stackGroups) || !Array.isArray(charts) || charts.length !== 2) {
     throw new TypeError('config must include stackGroups and exactly two focus radar charts');
   }
   if (!RADAR_REVIEW_STATUSES.includes(config.focusRadar.status)) throw new TypeError('invalid focus radar review status');
-  const focusStatus = config.focusRadar.status;
-  const isWide = layout === 'wide';
-  const width = isWide ? 920 : SVG_WIDTH;
-  const height = isWide ? 804 : 1172;
-  const stackX = isWide ? (width - 428) / 2 : 16;
-  const chartSummary = charts.map((chart) => `${chart.title}: ${chart.axes.map((axis) => `${axis.label}, ${axis.classification}`).join('; ')}`).join('. ');
+  return { theme, charts, focusStatus: config.focusRadar.status };
+}
+
+export function renderStackSvg(themeName, config) {
+  const { theme } = validateRenderConfig(themeName, config);
+  const width = SVG_WIDTH;
+  const height = 447;
+  const stackX = 16;
   let markup = rootSvg({
-    title: `SGODX Stack & Signals - ${themeName} theme, ${layout} layout`,
-    description: `Documented technology stack followed by two ${focusStatus.toLowerCase()} qualitative professional-focus radars in a ${isWide ? 'side-by-side' : 'vertical'} layout. The classifications are owner-approved descriptions informed by public project context where available; public material does not independently verify private work. CORE means primary current focus; SUPPORTING means complementary documented work; EXPLORING means a developing or future area; UNASSESSED means no owner-approved category is assigned. Radial distance shows categorical focus priority only, never proficiency, performance, seniority, or certification. UNASSESSED dimensions have no plotted point. ${chartSummary}.`,
+    title: `SGODX technology stack - ${themeName} theme`,
+    description: 'Documented technologies grouped into Languages and Interfaces, Services and Data, and Delivery and Tools. Each technology mark is inlined from a local profile asset.',
     width,
     height,
     theme,
   });
   markup += `${text(24, 31, 'SGODX / PROFILE SYSTEM', { fill: theme.cyan, size: 10, weight: 700, family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', letterSpacing: 1.2 })}
     ${text(24, 58, 'STACK & SIGNALS', { fill: theme.text, size: 21, weight: 700, letterSpacing: 0.5 })}
-    ${text(24, 78, 'DOCUMENTED STACK - OWNER-APPROVED QUALITATIVE FOCUS', { fill: theme.muted, size: 9.2, weight: 600, letterSpacing: 0.35 })}
-    <rect x="${width - 96}" y="21" width="72" height="25" rx="12.5" fill="${theme.panel}" stroke="${theme.purple}" />
-    ${text(width - 60, 38, focusStatus, { fill: theme.purple, size: 9.2, weight: 700, anchor: 'middle', letterSpacing: 0.35 })}
+    ${text(24, 78, 'DOCUMENTED TECHNOLOGY STACK', { fill: theme.muted, size: 9.2, weight: 600, letterSpacing: 0.35 })}
     ${panel(stackX, 91, 428, 340, theme)}`;
   markup += `${text(stackX + 16, 119, 'MY PERFECT STACK', { fill: theme.text, size: 14, weight: 700, letterSpacing: 0.5 })}
     ${text(stackX + 16, 137, 'Technology names reflect public project evidence and profile documentation.', { fill: theme.muted, size: 9.2 })}`;
@@ -485,22 +501,38 @@ export function renderStackSvg(themeName, config, layout = 'stacked') {
     { labelY: 354, chipY: 363 },
   ];
   config.stackGroups.forEach((group, groupIndex) => {
-    const layout = groupLayout[groupIndex];
-    if (!layout) return;
-    markup += text(stackX + 16, layout.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: 10.5, weight: 700, letterSpacing: 0.65 });
+    const groupPosition = groupLayout[groupIndex];
+    if (!groupPosition) return;
+    markup += text(stackX + 16, groupPosition.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: 10.5, weight: 700, letterSpacing: 0.65 });
     group.items.forEach((item, itemIndex) => {
       const row = Math.floor(itemIndex / 2);
       const column = itemIndex % 2;
-      markup += chipMarkup(item, stackX + 16 + column * 202, layout.chipY + row * 26, theme);
+      markup += chipMarkup(item, stackX + 16 + column * 202, groupPosition.chipY + row * 26, theme);
     });
   });
+  return `${markup}</svg>`;
+}
 
+export function renderRadarPairSvg(themeName, config, layout = 'wide') {
+  const { theme, charts, focusStatus } = validateRenderConfig(themeName, config);
+  if (!['wide', 'narrow'].includes(layout)) throw new RangeError(`unknown radar-pair layout: ${layout}`);
+  const isWide = layout === 'wide';
+  const width = isWide ? 920 : 328;
+  const height = isWide ? 376 : 736;
+  const chartSummary = charts.map((chart) => `${chart.title}: ${chart.axes.map((axis) => `${axis.label}, ${axis.classification}`).join('; ')}`).join('. ');
+  let markup = rootSvg({
+    title: `SGODX qualitative focus radar pair - ${themeName} theme, ${layout} layout`,
+    description: `Two ${focusStatus.toLowerCase()} qualitative professional-focus radars in a ${isWide ? 'side-by-side' : 'vertical'} layout. The classifications are owner-approved descriptions informed by public project context where available; public material does not independently verify private work. CORE means primary current focus; SUPPORTING means complementary documented work; EXPLORING means a developing or future area; UNASSESSED means no owner-approved category is assigned. Radial distance shows categorical focus priority only, never proficiency, performance, seniority, or certification. UNASSESSED dimensions have no plotted point. ${chartSummary}.`,
+    width,
+    height,
+    theme,
+  });
   if (isWide) {
-    markup += radarCard(charts[0], 16, 444, theme, focusStatus);
-    markup += radarCard(charts[1], 476, 444, theme, focusStatus);
+    markup += radarCard(charts[0], 16, 16, theme, focusStatus);
+    markup += radarCard(charts[1], 476, 16, theme, focusStatus);
   } else {
-    markup += radarCard(charts[0], 16, 444, theme, focusStatus);
-    markup += radarCard(charts[1], 16, 804, theme, focusStatus);
+    markup += radarCard(charts[0], 0, 16, theme, focusStatus, { compact: true });
+    markup += radarCard(charts[1], 0, 376, theme, focusStatus, { compact: true });
   }
   return `${markup}</svg>`;
 }
@@ -638,10 +670,19 @@ async function writeSvgIfChanged(filePath, svg) {
 async function writeStackAssets(outputDir, config) {
   const changed = [];
   for (const themeName of Object.keys(THEMES)) {
-    for (const layout of ['wide', 'stacked']) {
+    const stackPath = path.join(outputDir, `stack-signals-${themeName}.svg`);
+    if (await writeSvgIfChanged(stackPath, renderStackSvg(themeName, config))) changed.push(stackPath);
+    for (const layout of ['wide', 'narrow']) {
       const layoutSuffix = layout === 'wide' ? '' : '-narrow';
-      const filePath = path.join(outputDir, `stack-signals${layoutSuffix}-${themeName}.svg`);
-      if (await writeSvgIfChanged(filePath, renderStackSvg(themeName, config, layout))) changed.push(filePath);
+      const radarPath = path.join(outputDir, `radar-pair${layoutSuffix}-${themeName}.svg`);
+      if (await writeSvgIfChanged(radarPath, renderRadarPairSvg(themeName, config, layout))) changed.push(radarPath);
+    }
+    const obsoleteCombinedPath = path.join(outputDir, `stack-signals-narrow-${themeName}.svg`);
+    try {
+      await unlink(obsoleteCombinedPath);
+      changed.push(obsoleteCombinedPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
     }
   }
   return changed;
