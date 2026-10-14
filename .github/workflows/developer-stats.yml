@@ -1,6 +1,9 @@
-name: Developer Stats (manual verification)
+name: Developer Stats (daily + manual verification)
 
 on:
+  schedule:
+    - cron: "29 3 * * *"
+      timezone: "America/Santiago"
   workflow_dispatch:
     inputs:
       publish:
@@ -27,7 +30,11 @@ jobs:
           node-version: 24
 
       - name: Require main for publishing
-        if: ${{ inputs.publish }}
+        if: >-
+          ${{
+            github.event_name == 'schedule' ||
+            (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+          }}
         shell: bash
         run: |
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
@@ -74,10 +81,12 @@ jobs:
           print("Both Developer Stats SVGs parse as XML and have accessible titles/descriptions.")
           PY
 
-          if [[ "${{ inputs.publish }}" == "true" ]]; then
-            mode="Publish selected; this verification job remains read-only."
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            mode="Scheduled publication selected; verification remains read-only, and publishing is eligible only after success on main."
+          elif [[ "${{ inputs.publish }}" == "true" ]]; then
+            mode="Manual publication selected; verification remains read-only, and publishing is eligible only after success on main."
           else
-            mode="Dry run (default); no commit or push will run."
+            mode="Manual dry run (default); publishing is skipped and verification remains read-only."
           fi
           {
             echo "## Developer Stats verification"
@@ -95,7 +104,7 @@ jobs:
               fi
             done
             echo
-            echo "A one-day preview artifact is available for review. Only an explicitly selected publish run can enter the write-enabled job."
+            echo "A one-day preview artifact is available for review. The write-enabled job runs only for a scheduled event or an explicitly selected manual publication, after successful verification on main."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the two-file preview
@@ -109,7 +118,15 @@ jobs:
   publish:
     name: Publish approved stats assets
     needs: verify
-    if: ${{ inputs.publish }}
+    if: >-
+      ${{
+        needs.verify.result == 'success' &&
+        github.ref == 'refs/heads/main' &&
+        (
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+        )
+      }}
     runs-on: ubuntu-latest
     concurrency:
       group: profile-main-generated-assets

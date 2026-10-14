@@ -531,12 +531,33 @@ test('API failure preserves valid SVGs and leaves missing themes unwritten', asy
   }
 });
 
-test('manual automation defaults to read-only verification and scopes publication permissions', () => {
-  assert.match(manualWorkflow, /^on:\s*\n\s+workflow_dispatch:/m);
-  assert.doesNotMatch(manualWorkflow, /^\s+schedule:/m);
+test('daily and manual automation enforce the three-case publication matrix', () => {
+  assert.match(manualWorkflow, /^on:\s*\n\s+schedule:\s*\n\s+- cron: "29 3 \* \* \*"\s*\n\s+timezone: "America\/Santiago"/m);
+  assert.match(manualWorkflow, /^\s+workflow_dispatch:/m);
   assert.match(manualWorkflow, /publish:[\s\S]*?type: boolean[\s\S]*?default: false/);
-  assert.match(manualWorkflow, /verify:[\s\S]*?contents: read/);
-  assert.match(manualWorkflow, /publish:[\s\S]*?contents: write/);
+  const verifyJob = manualWorkflow.split(/\r?\n  verify:\r?\n/)[1].split(/\r?\n  publish:\r?\n/)[0];
+  const publishJob = manualWorkflow.split(/\r?\n  publish:\r?\n/)[1];
+  assert.match(verifyJob, /permissions:\s*\r?\n\s+contents: read/);
+  assert.doesNotMatch(verifyJob, /contents: write/);
+  assert.match(verifyJob, /github\.event_name == 'schedule'/);
+  assert.match(verifyJob, /github\.event_name == 'workflow_dispatch' && inputs\.publish == true/);
+  assert.match(publishJob, /needs\.verify\.result == 'success'/);
+  assert.match(publishJob, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(publishJob, /github\.event_name == 'schedule'/);
+  assert.match(publishJob, /github\.event_name == 'workflow_dispatch' && inputs\.publish == true/);
+  assert.match(publishJob, /permissions:\s*\r?\n\s+contents: write/);
+
+  const eligible = ({ event, publish, branch, verified }) => verified
+    && branch === 'main'
+    && (event === 'schedule' || (event === 'workflow_dispatch' && publish === true));
+  assert.equal(eligible({ event: 'workflow_dispatch', publish: false, branch: 'main', verified: true }), false);
+  assert.equal(eligible({ event: 'workflow_dispatch', publish: true, branch: 'main', verified: true }), true);
+  assert.equal(eligible({ event: 'workflow_dispatch', publish: true, branch: 'feature', verified: true }), false);
+  assert.equal(eligible({ event: 'schedule', branch: 'main', verified: true }), true);
+  assert.equal(eligible({ event: 'schedule', branch: 'feature', verified: true }), false);
+  assert.equal(eligible({ event: 'schedule', branch: 'main', verified: false }), false);
+  assert.equal(eligible({ event: 'workflow_dispatch', publish: true, branch: 'main', verified: false }), false);
+
   assert.match(manualWorkflow, /--stats-only[\s\S]*?--strict-api/);
   assert.match(manualWorkflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.match(manualWorkflow, /actions\/setup-node@v7\.1\.0[\s\S]*?node-version: 24/);
