@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "owner": "dpsychoo",
+  "reportingTimeZone": "America/Santiago",
+  "stackGroups": [
+    {
+      "label": "LANGUAGES & INTERFACES",
+      "items": [
+        { "name": "TypeScript", "icon": "typescript" },
+        { "name": "JavaScript", "icon": "javascript" },
+        { "name": "React", "icon": "react" },
+        { "name": "Astro", "icon": "astro" },
+        { "name": "WebGL", "icon": "webgl" },
+        { "name": "Canvas", "icon": "canvas" }
+      ]
+    },
+    {
+      "label": "SERVICES & DATA",
+      "items": [
+        { "name": "Node.js", "icon": "nodejs" },
+        { "name": "Express", "icon": "express" },
+        { "name": "REST APIs", "icon": "rest-api" },
+        { "name": "PostgreSQL", "icon": "postgresql" },
+        { "name": "Supabase", "icon": "supabase" },
+        { "name": "OpenAI API", "icon": "openai" }
+      ]
+    },
+    {
+      "label": "DELIVERY & TOOLS",
+      "items": [
+        { "name": "Vercel", "icon": "vercel" },
+        { "name": "GitHub Actions", "icon": "github-actions" },
+        { "name": "Git", "icon": "git" },
+        { "name": "VS Code", "icon": "vscode" }
+      ]
+    }
+  ],
+  "focusRadar": {
+    "status": "APPROVED",
+    "charts": [
+      {
+        "id": "product-frontend",
+        "title": "PRODUCT & FRONTEND ENGINEERING",
+        "axes": [
+          { "label": "TypeScript", "classification": "SUPPORTING" },
+          { "label": "React / UI Components", "classification": "SUPPORTING" },
+          { "label": "Interface Engineering", "classification": "CORE" },
+          { "label": "Responsive Interfaces", "classification": "SUPPORTING" },
+          { "label": "Interactive Experiences", "classification": "CORE" },
+          { "label": "Product Engineering", "classification": "CORE" }
+        ]
+      },
+      {
+        "id": "backend-data-ai",
+        "title": "PLATFORM, DATA & AUTOMATION",
+        "axes": [
+          { "label": "Backend / APIs", "classification": "SUPPORTING" },
+          { "label": "PostgreSQL / Data", "classification": "EXPLORING" },
+          { "label": "Supabase", "classification": "SUPPORTING" },
+          { "label": "AI Integrations", "classification": "SUPPORTING" },
+          { "label": "Automation", "classification": "EXPLORING" },
+          { "label": "Cloud Deployment", "classification": "SUPPORTING" }
+        ]
+      }
+    ]
+  }
+}

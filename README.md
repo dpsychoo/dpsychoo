@@ -12,21 +12,13 @@
     src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/main/light.svg">
 </picture>
 
+<!-- ===== PROFESSIONAL POSITIONING ===== -->
+<p align="center"><strong>Full-Stack Development &middot; AI Integrations &middot; SaaS Solutions</strong></p>
+<p align="center">Building digital products and exploring custom software, SaaS, system integrations and workflow automation for technology companies, mining and industrial contractors, startups, and businesses across industries.</p>
+<p align="center"><sub>Portfolio links document existing work; industry references describe future opportunities.</sub></p>
+
 <!-- ===== GITHUB STATS ===== -->
 <p align="center">
-  <picture>
-    <source
-      media="(prefers-color-scheme: dark)"
-      srcset="https://streak-stats.demolab.com/?user=dpsychoo&amp;background=0A101F&amp;stroke=22D3EE&amp;ring=A78BFA&amp;fire=10B981&amp;currStreakLabel=22D3EE&amp;sideLabels=94A3B8&amp;currStreakNum=F8FAFC&amp;sideNums=F8FAFC&amp;dates=64748B&amp;hide_border=true">
-    <source
-      media="(prefers-color-scheme: light)"
-      srcset="https://streak-stats.demolab.com/?user=dpsychoo&amp;background=FFFFFF&amp;stroke=0891B2&amp;ring=7C3AED&amp;fire=059669&amp;currStreakLabel=0891B2&amp;sideLabels=475569&amp;currStreakNum=0F172A&amp;sideNums=0F172A&amp;dates=94A3B8&amp;hide_border=true">
-    <img
-      width="100%"
-      alt="GitHub contribution streak"
-      src="https://streak-stats.demolab.com/?user=dpsychoo&amp;background=FFFFFF&amp;stroke=0891B2&amp;ring=7C3AED&amp;fire=059669&amp;currStreakLabel=0891B2&amp;sideLabels=475569&amp;currStreakNum=0F172A&amp;sideNums=0F172A&amp;dates=94A3B8&amp;hide_border=true">
-  </picture>
-  <br>
   <picture>
     <source
       media="(prefers-color-scheme: dark)"
@@ -86,6 +78,25 @@
   <a href="https://dpsychoo.github.io/gta-vi-generator-showcase/">ARCHITECTURE</a><br>
   <a href="https://github.com/dpsychoo/Itachi_SGODX">SGODX — UCHIHA ITACHI · Source</a>
 </p>
+<!-- ===== STACK & SIGNALS ===== -->
+<h2 align="center">STACK &amp; SIGNALS</h2>
+<p align="center">MY PERFECT STACK · PRODUCT &amp; FRONTEND · PLATFORM, DATA &amp; AUTOMATION</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./profile/stack-signals-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./profile/stack-signals-light.svg">
+    <img width="460" alt="Documented technology stack and two approved qualitative focus radars. Labels are CORE, SUPPORTING, EXPLORING or UNASSESSED; radial distance shows focus priority only." src="./profile/stack-signals-light.svg">
+  </picture>
+</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./profile/developer-stats-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./profile/developer-stats-light.svg">
+    <img width="460" alt="Public GitHub contribution metrics for twelve calendar months: contribution total, current and longest completed-day streaks, active days, average per active day, best day, and monthly bars. The current date is excluded." src="./profile/developer-stats-light.svg">
+  </picture>
+</p>
+<p><strong>Focus radar:</strong> CORE marks a primary current focus; SUPPORTING marks complementary documented work; EXPLORING marks a future or developing area; UNASSESSED marks a dimension without an owner-approved focus category. The classifications are owner-approved descriptions of professional focus, informed by public project documentation where available. Radial distance shows categorical focus priority only, never proficiency, performance, seniority or certification. See <a href="docs/radar-evidence.md">dimension-by-dimension evidence and limits</a>.</p>
+<p><strong>Contribution readout:</strong> This generated image is a static public-contribution snapshot, not a live feed. It covers the twelve-calendar-month window through the latest complete date in America/Santiago. The in-progress current date is excluded. An active day has at least one contribution; average is total contributions divided by active days; streaks count consecutive active dates within the same window; monthly bars use those same dates.</p>
 <!-- ===== SOCIAL BADGES ===== -->
 <div align="center">
   <br />

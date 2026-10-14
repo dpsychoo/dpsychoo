@@ -1,0 +1,44 @@
+# PROPOSAL ONLY. This file is outside .github/workflows and is not active.
+# Review GraphQL access with the Actions GITHUB_TOKEN before placing it there.
+name: Refresh public developer contribution stats
+
+on:
+  schedule:
+    - cron: "29 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: profile-developer-stats-assets
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile
+        uses: actions/checkout@v7.0.1
+
+      - name: Generate public contribution panels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/generate_stack_signals.mjs --output-dir profile
+
+      - name: Commit generated stats only when changed
+        shell: bash
+        run: |
+          git add -- \
+            profile/developer-stats-dark.svg \
+            profile/developer-stats-light.svg
+          if git diff --cached --quiet -- \
+            profile/developer-stats-dark.svg \
+            profile/developer-stats-light.svg; then
+            echo "Developer stats are unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh public contribution stats"
+          git push
