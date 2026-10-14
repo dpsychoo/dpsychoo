@@ -448,31 +448,36 @@ function radarCard(chart, x, y, theme, focusStatus) {
   return markup;
 }
 
-export function renderStackSvg(themeName, config) {
+export function renderStackSvg(themeName, config, layout = 'stacked') {
   const theme = THEMES[themeName];
   if (!theme) throw new RangeError(`unknown theme: ${themeName}`);
+  if (!['wide', 'stacked'].includes(layout)) throw new RangeError(`unknown Stack & Signals layout: ${layout}`);
   const charts = config?.focusRadar?.charts;
   if (!Array.isArray(config?.stackGroups) || !Array.isArray(charts) || charts.length !== 2) {
     throw new TypeError('config must include stackGroups and exactly two focus radar charts');
   }
   if (!RADAR_REVIEW_STATUSES.includes(config.focusRadar.status)) throw new TypeError('invalid focus radar review status');
   const focusStatus = config.focusRadar.status;
-  const height = 1172;
+  const isWide = layout === 'wide';
+  const width = isWide ? 920 : SVG_WIDTH;
+  const height = isWide ? 804 : 1172;
+  const stackX = isWide ? (width - 428) / 2 : 16;
   const chartSummary = charts.map((chart) => `${chart.title}: ${chart.axes.map((axis) => `${axis.label}, ${axis.classification}`).join('; ')}`).join('. ');
   let markup = rootSvg({
-    title: `SGODX Stack & Signals - ${themeName} theme`,
-    description: `Documented technology stack followed by two ${focusStatus.toLowerCase()} qualitative professional-focus radars. The classifications are owner-approved descriptions informed by public project context where available; public material does not independently verify private work. CORE means primary current focus; SUPPORTING means complementary documented work; EXPLORING means a developing or future area; UNASSESSED means no owner-approved category is assigned. Radial distance shows categorical focus priority only, never proficiency, performance, seniority, or certification. UNASSESSED dimensions have no plotted point. ${chartSummary}.`,
+    title: `SGODX Stack & Signals - ${themeName} theme, ${layout} layout`,
+    description: `Documented technology stack followed by two ${focusStatus.toLowerCase()} qualitative professional-focus radars in a ${isWide ? 'side-by-side' : 'vertical'} layout. The classifications are owner-approved descriptions informed by public project context where available; public material does not independently verify private work. CORE means primary current focus; SUPPORTING means complementary documented work; EXPLORING means a developing or future area; UNASSESSED means no owner-approved category is assigned. Radial distance shows categorical focus priority only, never proficiency, performance, seniority, or certification. UNASSESSED dimensions have no plotted point. ${chartSummary}.`,
+    width,
     height,
     theme,
   });
   markup += `${text(24, 31, 'SGODX / PROFILE SYSTEM', { fill: theme.cyan, size: 10, weight: 700, family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', letterSpacing: 1.2 })}
     ${text(24, 58, 'STACK & SIGNALS', { fill: theme.text, size: 21, weight: 700, letterSpacing: 0.5 })}
     ${text(24, 78, 'DOCUMENTED STACK - OWNER-APPROVED QUALITATIVE FOCUS', { fill: theme.muted, size: 9.2, weight: 600, letterSpacing: 0.35 })}
-    <rect x="364" y="21" width="72" height="25" rx="12.5" fill="${theme.panel}" stroke="${theme.purple}" />
-    ${text(400, 38, focusStatus, { fill: theme.purple, size: 9.2, weight: 700, anchor: 'middle', letterSpacing: 0.35 })}
-    ${panel(16, 91, 428, 340, theme)}`;
-  markup += `${text(32, 119, 'MY PERFECT STACK', { fill: theme.text, size: 14, weight: 700, letterSpacing: 0.5 })}
-    ${text(32, 137, 'Technology names reflect public project evidence and profile documentation.', { fill: theme.muted, size: 9.2 })}`;
+    <rect x="${width - 96}" y="21" width="72" height="25" rx="12.5" fill="${theme.panel}" stroke="${theme.purple}" />
+    ${text(width - 60, 38, focusStatus, { fill: theme.purple, size: 9.2, weight: 700, anchor: 'middle', letterSpacing: 0.35 })}
+    ${panel(stackX, 91, 428, 340, theme)}`;
+  markup += `${text(stackX + 16, 119, 'MY PERFECT STACK', { fill: theme.text, size: 14, weight: 700, letterSpacing: 0.5 })}
+    ${text(stackX + 16, 137, 'Technology names reflect public project evidence and profile documentation.', { fill: theme.muted, size: 9.2 })}`;
 
   const groupLayout = [
     { labelY: 157, chipY: 166 },
@@ -482,16 +487,21 @@ export function renderStackSvg(themeName, config) {
   config.stackGroups.forEach((group, groupIndex) => {
     const layout = groupLayout[groupIndex];
     if (!layout) return;
-    markup += text(32, layout.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: 10.5, weight: 700, letterSpacing: 0.65 });
+    markup += text(stackX + 16, layout.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: 10.5, weight: 700, letterSpacing: 0.65 });
     group.items.forEach((item, itemIndex) => {
       const row = Math.floor(itemIndex / 2);
       const column = itemIndex % 2;
-      markup += chipMarkup(item, 32 + column * 202, layout.chipY + row * 26, theme);
+      markup += chipMarkup(item, stackX + 16 + column * 202, layout.chipY + row * 26, theme);
     });
   });
 
-  markup += radarCard(charts[0], 16, 444, theme, focusStatus);
-  markup += radarCard(charts[1], 16, 804, theme, focusStatus);
+  if (isWide) {
+    markup += radarCard(charts[0], 16, 444, theme, focusStatus);
+    markup += radarCard(charts[1], 476, 444, theme, focusStatus);
+  } else {
+    markup += radarCard(charts[0], 16, 444, theme, focusStatus);
+    markup += radarCard(charts[1], 16, 804, theme, focusStatus);
+  }
   return `${markup}</svg>`;
 }
 function formatNumber(value) {
@@ -628,8 +638,11 @@ async function writeSvgIfChanged(filePath, svg) {
 async function writeStackAssets(outputDir, config) {
   const changed = [];
   for (const themeName of Object.keys(THEMES)) {
-    const filePath = path.join(outputDir, `stack-signals-${themeName}.svg`);
-    if (await writeSvgIfChanged(filePath, renderStackSvg(themeName, config))) changed.push(filePath);
+    for (const layout of ['wide', 'stacked']) {
+      const layoutSuffix = layout === 'wide' ? '' : '-narrow';
+      const filePath = path.join(outputDir, `stack-signals${layoutSuffix}-${themeName}.svg`);
+      if (await writeSvgIfChanged(filePath, renderStackSvg(themeName, config, layout))) changed.push(filePath);
+    }
   }
   return changed;
 }

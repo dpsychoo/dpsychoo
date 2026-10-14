@@ -1,6 +1,6 @@
 # STACK & SIGNALS
 
-This section uses small, stacked SVG panels. GitHub README HTML does not provide a reliable responsive grid across desktop and mobile, so the panels stay readable in one column instead of shrinking radar labels into a two-column layout.
+The README uses standard `<picture>` and `<source media>` selection to load pre-rendered SVG layouts without depending on CSS that GitHub may strip. At widths of 768 pixels and above, the 920-pixel SVG places the Product & Frontend and Platform, Data & Automation radar cards side by side below the centered stack panel. At 767 pixels and below, a 460-pixel SVG stacks the two radar cards vertically. Dark and light variants are generated for both layouts. The contribution card remains below the stack-and-radar image.
 
 ## Evidence and scope
 
@@ -24,6 +24,8 @@ The two charts show owner-approved descriptions of professional focus. Public pr
 Radial distance encodes categorical focus priority: CORE is outermost, SUPPORTING is in the middle, and EXPLORING is innermost. UNASSESSED dimensions have no plotted point. The `RADAR_FOCUS_RADII` constants in the generator are display coordinates for these category positions; they are not configured scores, percentages, measurements, or skill metrics. The radars are not scientifically validated and do not measure proficiency, performance, seniority, certification, or years of experience. The owner approved the displayed classifications.
 
 The README includes a text explanation, and the SVG title and description carry accessible context. The [dimension-by-dimension evidence notes](radar-evidence.md) distinguish the approved self-description from public evidence and document its limits.
+
+The wide and narrow visual variants are rendered from the same configuration and radar component. The classification values, card artwork, and stack icons do not vary by viewport; only the card positions and SVG dimensions change.
 ## Contribution statistics
 
 The generator requests only `date` and `contributionCount` from `user(login: "dpsychoo").contributionsCollection.contributionCalendar`, plus `totalContributions` to validate the day rows. It does not request contribution records, repository names, or private source details. The query does not request private contributions. GitHub documents private and internal contributions as requiring the optional `read:user` scope; the available local GitHub CLI token did not have that scope, and the public calendar query succeeded.
