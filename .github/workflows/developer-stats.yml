@@ -1,0 +1,143 @@
+name: Developer Stats (manual verification)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the two validated Developer Stats SVGs to main. Leave false for a read-only dry run."
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  verify:
+    name: Fetch, validate, and preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up supported Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+
+      - name: Require main for publishing
+        if: ${{ inputs.publish }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Publishing is allowed only from a workflow run started on main."
+            exit 1
+          fi
+
+      - name: Check generator syntax
+        run: node --check scripts/generate_stack_signals.mjs
+
+      - name: Run Developer Stats tests
+        run: node --test tests/developer_stats.test.mjs
+
+      - name: Generate isolated public contribution preview
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node scripts/generate_stack_signals.mjs
+          --stats-only
+          --strict-api
+          --output-dir "$RUNNER_TEMP/developer-stats-preview"
+
+      - name: Parse both SVGs and report proposed changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          preview = Path("${{ runner.temp }}/developer-stats-preview")
+          expected = {"developer-stats-dark.svg", "developer-stats-light.svg"}
+          actual = {path.name for path in preview.iterdir()}
+          if actual != expected:
+              raise SystemExit(f"Expected exactly the dark/light stats SVGs; found {sorted(actual)}")
+          for name in sorted(expected):
+              root = ElementTree.parse(preview / name).getroot()
+              if root.tag != "{http://www.w3.org/2000/svg}svg":
+                  raise SystemExit(f"{name} is not an SVG document")
+              if root.find("{http://www.w3.org/2000/svg}title") is None:
+                  raise SystemExit(f"{name} is missing its accessible title")
+              if root.find("{http://www.w3.org/2000/svg}desc") is None:
+                  raise SystemExit(f"{name} is missing its accessible description")
+          print("Both Developer Stats SVGs parse as XML and have accessible titles/descriptions.")
+          PY
+
+          if [[ "${{ inputs.publish }}" == "true" ]]; then
+            mode="Publish selected; this verification job remains read-only."
+          else
+            mode="Dry run (default); no commit or push will run."
+          fi
+          {
+            echo "## Developer Stats verification"
+            echo
+            echo "$mode"
+            echo
+            echo "The preview uses public contribution-calendar data for dpsychoo. The in-progress day is excluded from the displayed metrics."
+            echo
+            echo "Potential changes compared with the checked-out revision:"
+            for name in developer-stats-dark.svg developer-stats-light.svg; do
+              if cmp -s "profile/$name" "$RUNNER_TEMP/developer-stats-preview/$name"; then
+                printf -- '- `%s`: unchanged\n' "profile/$name"
+              else
+                printf -- '- `%s`: changed\n' "profile/$name"
+              fi
+            done
+            echo
+            echo "A one-day preview artifact is available for review. Only an explicitly selected publish run can enter the write-enabled job."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the two-file preview
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: developer-stats-preview-${{ github.run_id }}
+          path: ${{ runner.temp }}/developer-stats-preview/developer-stats-*.svg
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish approved stats assets
+    needs: verify
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: profile-main-generated-assets
+      queue: max
+    permissions:
+      contents: write
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download this run's validated preview
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: developer-stats-preview-${{ github.run_id }}
+          path: ${{ runner.temp }}/developer-stats-preview
+
+      - name: Validate and safely publish only Developer Stats SVGs
+        run: >-
+          node scripts/publish_developer_stats.mjs
+          --stats-dir "${{ runner.temp }}/developer-stats-preview"
+          --base-sha "$GITHUB_SHA"
+
+      - name: Summarize publication
+        run: |
+          {
+            echo "## Developer Stats publication"
+            echo
+            echo 'The publisher stages only `profile/developer-stats-dark.svg` and `profile/developer-stats-light.svg`. It makes no commit when both are unchanged, and refuses to overwrite either asset if main changed them after verification.'
+          } >> "$GITHUB_STEP_SUMMARY"

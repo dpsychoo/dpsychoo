@@ -1,5 +1,6 @@
-# PROPOSAL ONLY. This file is outside .github/workflows and is not active.
-# Review GraphQL access with the Actions GITHUB_TOKEN before placing it there.
+# HISTORICAL PROPOSAL ONLY. This file is outside .github/workflows and is not active.
+# Superseded by ../../.github/workflows/developer-stats.yml, which is manual-only and
+# still requires a successful Actions-token dry run before any schedule is considered.
 name: Refresh public developer contribution stats
 
 on:
