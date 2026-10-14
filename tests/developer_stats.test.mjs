@@ -18,6 +18,7 @@ import {
 } from '../scripts/generate_stack_signals.mjs';
 
 const config = JSON.parse(readFileSync(new URL('../profile/stack-signals.config.json', import.meta.url), 'utf8'));
+const profileReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 
 function calendarFixture(startDate, asOfDate, counts = {}) {
   const days = [];
@@ -148,6 +149,37 @@ test('approved radars render qualitative classifications without score placehold
   }), /invalid focus radar review status/);
 });
 
+test('wide radars render side by side and the narrow variant stacks them', () => {
+  const wide = renderStackSvg('dark', config, 'wide');
+  assert.match(wide, /width="920" height="804" viewBox="0 0 920 804"/);
+  assert.match(wide, /<rect x="16" y="444" width="428" height="344"/);
+  assert.match(wide, /<rect x="476" y="444" width="428" height="344"/);
+
+  const narrow = renderStackSvg('light', config, 'stacked');
+  assert.match(narrow, /width="460" height="1172" viewBox="0 0 460 1172"/);
+  assert.match(narrow, /<rect x="16" y="444" width="428" height="344"/);
+  assert.match(narrow, /<rect x="16" y="804" width="428" height="344"/);
+});
+
+test('README places GitHub stats after project links and selects responsive radar assets', () => {
+  const snakeIndex = profileReadme.indexOf('<!-- ===== CONTRIBUTION SNAKE ===== -->');
+  const itachiIndex = profileReadme.indexOf('https://github.com/dpsychoo/Itachi_SGODX');
+  const githubStatsIndex = profileReadme.indexOf('<!-- ===== GITHUB STATS ===== -->');
+  const stackIndex = profileReadme.indexOf('<!-- ===== STACK & SIGNALS ===== -->');
+  const developerSignalsIndex = profileReadme.indexOf('profile/developer-stats-dark.svg');
+
+  assert.ok(snakeIndex < itachiIndex && itachiIndex < githubStatsIndex && githubStatsIndex < stackIndex);
+  assert.ok(stackIndex < developerSignalsIndex);
+  for (const asset of [
+    'profile/stats-dark.svg',
+    'profile/stats-light.svg',
+    'profile/languages-dark.svg',
+    'profile/languages-light.svg',
+    'profile/stack-signals-narrow-dark.svg',
+    'profile/stack-signals-narrow-light.svg',
+  ]) assert.ok(profileReadme.includes(asset), `README must reference ${asset}`);
+});
+
 test('radar config uses only qualitative levels and carries the owner-approved focus', () => {
   const levels = new Set(['CORE', 'SUPPORTING', 'EXPLORING', 'UNASSESSED']);
   assert.equal(config.focusRadar.status, 'APPROVED');
@@ -177,11 +209,13 @@ test('radar config uses only qualitative levels and carries the owner-approved f
 });
 
 test('stack rows inline sixteen local technology icons with no text pills or remote loads', () => {
-  const svg = renderStackSvg('dark', config);
-  assert.equal((svg.match(/<svg x="/g) ?? []).length, 16);
-  assert.match(svg, /viewBox="0 0 24 24"[^>]*fill="none" stroke="currentColor"/);
-  assert.doesNotMatch(svg, />(?:TS|JS|WG|API|PG|GH|VS)<\/text>/);
-  assert.doesNotMatch(svg, /(?:href|xlink:href)=/i);
+  for (const layout of ['wide', 'stacked']) {
+    const svg = renderStackSvg('dark', config, layout);
+    assert.equal((svg.match(/<svg x="/g) ?? []).length, 16);
+    assert.match(svg, /viewBox="0 0 24 24"[^>]*fill="none" stroke="currentColor"/);
+    assert.doesNotMatch(svg, />(?:TS|JS|WG|API|PG|GH|VS)<\/text>/);
+    assert.doesNotMatch(svg, /(?:href|xlink:href)=/i);
+  }
   assert.ok(config.stackGroups.flatMap(({ items }) => items).every(({ icon }) => typeof icon === 'string'));
 });
 
