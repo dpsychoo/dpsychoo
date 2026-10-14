@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -365,8 +365,7 @@ function stackIconMarkup(iconName, x, y, theme) {
     <svg x="${x + 6}" y="${y + 4.5}" width="16" height="16" viewBox="${escapeXml(icon.viewBox)}" color="${iconColor}" ${icon.presentation} aria-hidden="true" focusable="false">${icon.markup}</svg>`;
 }
 
-function chipMarkup(item, x, y, theme) {
-  const width = 194;
+function chipMarkup(item, x, y, theme, width = 194) {
   if (!item.icon || !item.name) throw new TypeError('stack items must include a name and local icon asset');
   return `<g>
     <rect x="${x}" y="${y}" width="${width}" height="25" rx="8" fill="${theme.panelAlt}" stroke="${theme.border}" />
@@ -476,38 +475,52 @@ function validateRenderConfig(themeName, config) {
   return { theme, charts, focusStatus: config.focusRadar.status };
 }
 
-export function renderStackSvg(themeName, config) {
+export function renderStackSvg(themeName, config, layout = 'wide') {
   const { theme } = validateRenderConfig(themeName, config);
-  const width = SVG_WIDTH;
-  const height = 447;
+  if (!['wide', 'narrow'].includes(layout)) throw new RangeError(`unknown stack layout: ${layout}`);
+  const isWide = layout === 'wide';
+  const width = isWide ? 1000 : SVG_WIDTH;
+  const height = isWide ? 292 : 390;
   const stackX = 16;
+  const cardY = isWide ? 12 : 12;
+  const cardHeight = isWide ? 268 : 366;
   let markup = rootSvg({
-    title: `SGODX technology stack - ${themeName} theme`,
-    description: 'Documented technologies grouped into Languages and Interfaces, Services and Data, and Delivery and Tools. Each technology mark is inlined from a local profile asset.',
+    title: `SGODX technology stack - ${themeName} theme, ${layout} layout`,
+    description: `Sixteen documented technologies grouped into Languages and Interfaces, Services and Data, and Delivery and Tools in a ${isWide ? 'horizontal three-column' : 'vertical category'} layout. Each technology mark is inlined from a local profile asset.`,
     width,
     height,
     theme,
   });
-  markup += `${text(24, 31, 'SGODX / PROFILE SYSTEM', { fill: theme.cyan, size: 10, weight: 700, family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', letterSpacing: 1.2 })}
-    ${text(24, 58, 'STACK & SIGNALS', { fill: theme.text, size: 21, weight: 700, letterSpacing: 0.5 })}
-    ${text(24, 78, 'DOCUMENTED TECHNOLOGY STACK', { fill: theme.muted, size: 9.2, weight: 600, letterSpacing: 0.35 })}
-    ${panel(stackX, 91, 428, 340, theme)}`;
-  markup += `${text(stackX + 16, 119, 'MY PERFECT STACK', { fill: theme.text, size: 14, weight: 700, letterSpacing: 0.5 })}
-    ${text(stackX + 16, 137, 'Technology names reflect public project evidence and profile documentation.', { fill: theme.muted, size: 9.2 })}`;
+  markup += `${panel(stackX, cardY, width - 2 * stackX, cardHeight, theme)}`;
+  markup += `${text(stackX + 16, isWide ? 42 : 36, 'MY PERFECT STACK', { fill: theme.text, size: isWide ? 16 : 14, weight: 700, letterSpacing: 0.5 })}
+    ${text(stackX + 16, isWide ? 59 : 53, 'DOCUMENTED TECHNOLOGY STACK', { fill: theme.muted, size: 9.2, weight: 600, letterSpacing: 0.35 })}`;
 
-  const groupLayout = [
-    { labelY: 157, chipY: 166 },
-    { labelY: 256, chipY: 265 },
-    { labelY: 354, chipY: 363 },
-  ];
+  const groupLayout = isWide
+    ? [
+      { x: 32, labelY: 82, chipY: 96 },
+      { x: 356, labelY: 82, chipY: 96 },
+      { x: 680, labelY: 82, chipY: 96 },
+    ]
+    : [
+      { x: 32, labelY: 76, chipY: 84 },
+      { x: 32, labelY: 188, chipY: 196 },
+      { x: 32, labelY: 300, chipY: 308 },
+    ];
+  if (isWide) {
+    markup += `<line x1="338" y1="74" x2="338" y2="258" stroke="${theme.border}" stroke-width="1" />
+      <line x1="662" y1="74" x2="662" y2="258" stroke="${theme.border}" stroke-width="1" />`;
+  }
   config.stackGroups.forEach((group, groupIndex) => {
     const groupPosition = groupLayout[groupIndex];
     if (!groupPosition) return;
-    markup += text(stackX + 16, groupPosition.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: 10.5, weight: 700, letterSpacing: 0.65 });
+    markup += text(groupPosition.x, groupPosition.labelY, group.label.toUpperCase(), { fill: theme.cyan, size: isWide ? 10 : 10.5, weight: 700, letterSpacing: 0.55 });
     group.items.forEach((item, itemIndex) => {
       const row = Math.floor(itemIndex / 2);
       const column = itemIndex % 2;
-      markup += chipMarkup(item, stackX + 16 + column * 202, groupPosition.chipY + row * 26, theme);
+      const chipWidth = isWide ? 140 : 194;
+      const columnStep = isWide ? 148 : 202;
+      const rowStep = isWide ? 46 : 26;
+      markup += chipMarkup(item, groupPosition.x + column * columnStep, groupPosition.chipY + row * rowStep, theme, chipWidth);
     });
   });
   return `${markup}</svg>`;
@@ -670,19 +683,12 @@ async function writeSvgIfChanged(filePath, svg) {
 async function writeStackAssets(outputDir, config) {
   const changed = [];
   for (const themeName of Object.keys(THEMES)) {
-    const stackPath = path.join(outputDir, `stack-signals-${themeName}.svg`);
-    if (await writeSvgIfChanged(stackPath, renderStackSvg(themeName, config))) changed.push(stackPath);
     for (const layout of ['wide', 'narrow']) {
       const layoutSuffix = layout === 'wide' ? '' : '-narrow';
+      const stackPath = path.join(outputDir, `stack-signals${layoutSuffix}-${themeName}.svg`);
+      if (await writeSvgIfChanged(stackPath, renderStackSvg(themeName, config, layout))) changed.push(stackPath);
       const radarPath = path.join(outputDir, `radar-pair${layoutSuffix}-${themeName}.svg`);
       if (await writeSvgIfChanged(radarPath, renderRadarPairSvg(themeName, config, layout))) changed.push(radarPath);
-    }
-    const obsoleteCombinedPath = path.join(outputDir, `stack-signals-narrow-${themeName}.svg`);
-    try {
-      await unlink(obsoleteCombinedPath);
-      changed.push(obsoleteCombinedPath);
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
     }
   }
   return changed;
