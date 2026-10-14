@@ -17,19 +17,6 @@
 <p align="center">Building digital products and exploring custom software, SaaS, system integrations and workflow automation for technology companies, mining and industrial contractors, startups, and businesses across industries.</p>
 <p align="center"><sub>Portfolio links document existing work; industry references describe future opportunities.</sub></p>
 
-<!-- ===== CONTRIBUTION SNAKE ===== -->
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-dark.svg?v=2">
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
-  <img
-    width="100%"
-    alt="David Castro contribution activity"
-    src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
-</picture>
 <!-- ===== PROJECTS ===== -->
 <picture>
   <source
@@ -82,11 +69,9 @@
 <p align="center">MY PERFECT STACK · PRODUCT &amp; FRONTEND · PLATFORM, DATA &amp; AUTOMATION</p>
 <p align="center">
   <picture>
-    <source media="(max-width: 767px) and (prefers-color-scheme: dark)" srcset="./profile/stack-signals-narrow-dark.svg">
-    <source media="(max-width: 767px)" srcset="./profile/stack-signals-narrow-light.svg">
-    <source media="(min-width: 768px) and (prefers-color-scheme: dark)" srcset="./profile/stack-signals-dark.svg">
-    <source media="(min-width: 768px)" srcset="./profile/stack-signals-light.svg">
-    <img width="100%" alt="Documented technology stack and two approved qualitative focus radars. They display side by side on wide screens and vertically on narrow screens. Labels are CORE, SUPPORTING, EXPLORING or UNASSESSED; radial distance shows focus priority only." src="./profile/stack-signals-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="./profile/stack-signals-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./profile/stack-signals-light.svg">
+    <img width="460" alt="Documented technology stack grouped into Languages and Interfaces, Services and Data, and Delivery and Tools." src="./profile/stack-signals-light.svg">
   </picture>
 </p>
 <p align="center">
@@ -98,6 +83,28 @@
 </p>
 <p><strong>Focus radar:</strong> CORE marks a primary current focus; SUPPORTING marks complementary documented work; EXPLORING marks a future or developing area; UNASSESSED marks a dimension without an owner-approved focus category. The classifications are owner-approved descriptions of professional focus, informed by public project documentation where available. Radial distance shows categorical focus priority only, never proficiency, performance, seniority or certification. See <a href="docs/radar-evidence.md">dimension-by-dimension evidence and limits</a>.</p>
 <p><strong>Contribution readout:</strong> This generated image is a static public-contribution snapshot, not a live feed. It covers the twelve-calendar-month window through the latest complete date in America/Santiago. The in-progress current date is excluded. An active day has at least one contribution; average is total contributions divided by active days; streaks count consecutive active dates within the same window; monthly bars use those same dates.</p>
+<p align="center">
+  <picture>
+    <source media="(max-width: 767px) and (prefers-color-scheme: dark)" srcset="./profile/radar-pair-narrow-dark.svg">
+    <source media="(max-width: 767px)" srcset="./profile/radar-pair-narrow-light.svg">
+    <source media="(min-width: 768px) and (prefers-color-scheme: dark)" srcset="./profile/radar-pair-dark.svg">
+    <source media="(min-width: 768px)" srcset="./profile/radar-pair-light.svg">
+    <img width="100%" alt="Two owner-approved qualitative focus radars: Product and Frontend Engineering, and Platform, Data and Automation. Cards sit side by side on wide screens and vertically on narrow screens. CORE, SUPPORTING, EXPLORING and UNASSESSED are categorical focus labels; radial distance does not represent proficiency or performance." src="./profile/radar-pair-light.svg">
+  </picture>
+</p>
+<!-- ===== CONTRIBUTION SNAKE ===== -->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-dark.svg?v=2">
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
+  <img
+    width="100%"
+    alt="David Castro contribution activity"
+    src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/output/snake-light.svg?v=2">
+</picture>
 <!-- ===== SOCIAL BADGES ===== -->
 <div align="center">
   <br />
