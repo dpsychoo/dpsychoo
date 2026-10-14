@@ -17,34 +17,15 @@
 <p align="center">Building digital products and exploring custom software, SaaS, system integrations and workflow automation for technology companies, mining and industrial contractors, startups, and businesses across industries.</p>
 <p align="center"><sub>Portfolio links document existing work; industry references describe future opportunities.</sub></p>
 
-<!-- ===== GITHUB STATS ===== -->
 <p align="center">
   <picture>
-    <source
-      media="(prefers-color-scheme: dark)"
-      srcset="./profile/stats-dark.svg">
-    <source
-      media="(prefers-color-scheme: light)"
-      srcset="./profile/stats-light.svg">
-    <img
-      width="49%"
-      alt="GitHub statistics"
-      src="./profile/stats-light.svg">
-  </picture>
-  <picture>
-    <source
-      media="(prefers-color-scheme: dark)"
-      srcset="./profile/languages-dark.svg">
-    <source
-      media="(prefers-color-scheme: light)"
-      srcset="./profile/languages-light.svg">
-    <img
-      width="49%"
-      alt="Top programming languages"
-      src="./profile/languages-light.svg">
+    <source media="(max-width: 767px) and (prefers-color-scheme: dark)" srcset="./profile/radar-pair-narrow-dark.svg">
+    <source media="(max-width: 767px)" srcset="./profile/radar-pair-narrow-light.svg">
+    <source media="(min-width: 768px) and (prefers-color-scheme: dark)" srcset="./profile/radar-pair-dark.svg">
+    <source media="(min-width: 768px)" srcset="./profile/radar-pair-light.svg">
+    <img width="100%" alt="Two owner-approved qualitative focus radars: Product and Frontend Engineering, and Platform, Data and Automation. Cards sit side by side on wide screens and vertically on narrow screens. CORE, SUPPORTING, EXPLORING and UNASSESSED are categorical focus labels; radial distance does not represent proficiency or performance." src="./profile/radar-pair-light.svg">
   </picture>
 </p>
-
 <!-- ===== CONTRIBUTION SNAKE ===== -->
 <picture>
   <source
@@ -78,14 +59,43 @@
   <a href="https://dpsychoo.github.io/gta-vi-generator-showcase/">ARCHITECTURE</a><br>
   <a href="https://github.com/dpsychoo/Itachi_SGODX">SGODX — UCHIHA ITACHI · Source</a>
 </p>
-<!-- ===== STACK & SIGNALS ===== -->
-<h2 align="center">STACK &amp; SIGNALS</h2>
-<p align="center">MY PERFECT STACK · PRODUCT &amp; FRONTEND · PLATFORM, DATA &amp; AUTOMATION</p>
+<!-- ===== GITHUB STATS ===== -->
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./profile/stack-signals-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="./profile/stack-signals-light.svg">
-    <img width="460" alt="Documented technology stack and two approved qualitative focus radars. Labels are CORE, SUPPORTING, EXPLORING or UNASSESSED; radial distance shows focus priority only." src="./profile/stack-signals-light.svg">
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="./profile/stats-dark.svg">
+    <source
+      media="(prefers-color-scheme: light)"
+      srcset="./profile/stats-light.svg">
+    <img
+      width="49%"
+      alt="GitHub statistics"
+      src="./profile/stats-light.svg">
+  </picture>
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="./profile/languages-dark.svg">
+    <source
+      media="(prefers-color-scheme: light)"
+      srcset="./profile/languages-light.svg">
+    <img
+      width="49%"
+      alt="Top programming languages"
+      src="./profile/languages-light.svg">
+  </picture>
+</p>
+<!-- ===== STACK & SIGNALS ===== -->
+<h2 align="center">STACK &amp; SIGNALS</h2>
+<p align="center">MY PERFECT STACK · 16 DOCUMENTED TECHNOLOGIES · THREE CATEGORIES</p>
+<p align="center">
+  <picture>
+    <source media="(max-width: 767px) and (prefers-color-scheme: dark)" srcset="./profile/stack-signals-narrow-dark.svg">
+    <source media="(max-width: 767px)" srcset="./profile/stack-signals-narrow-light.svg">
+    <source media="(min-width: 768px) and (prefers-color-scheme: dark)" srcset="./profile/stack-signals-dark.svg">
+    <source media="(min-width: 768px)" srcset="./profile/stack-signals-light.svg">
+    <img width="100%" alt="Compact MY PERFECT STACK with sixteen local technology icons in three categories: Languages and Interfaces, Services and Data, and Delivery and Tools." src="./profile/stack-signals-light.svg">
   </picture>
 </p>
 <p align="center">

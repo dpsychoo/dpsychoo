@@ -1,6 +1,8 @@
 # STACK & SIGNALS
 
-This section uses small, stacked SVG panels. GitHub README HTML does not provide a reliable responsive grid across desktop and mobile, so the panels stay readable in one column instead of shrinking radar labels into a two-column layout.
+The README uses standard `<picture>` and `<source media>` selection to load pre-rendered SVG assets without depending on CSS that GitHub may strip. The approved radar pair appears once, directly below the professional introduction note; its original Contribution Snake follows immediately. At widths of 768 pixels and above, the 920-pixel radar SVG places Product & Frontend Engineering beside Platform, Data & Automation. At 767 pixels and below, a 328-pixel radar SVG stacks the equal-height cards vertically and wraps longer axis labels for legibility. Dark and light variants are generated for both radar layouts.
+
+The stack-only SVGs follow the GitHub statistics cards. The 1000x292 desktop variant (3.42:1) arranges all three technology categories horizontally. The 460x390 narrow variant stacks the categories while retaining two-column technology rows. Both variants contain the same sixteen local icons and readable labels; neither contains radar artwork. Dark and light variants are generated for both stack layouts.
 
 ## Evidence and scope
 
@@ -24,6 +26,8 @@ The two charts show owner-approved descriptions of professional focus. Public pr
 Radial distance encodes categorical focus priority: CORE is outermost, SUPPORTING is in the middle, and EXPLORING is innermost. UNASSESSED dimensions have no plotted point. The `RADAR_FOCUS_RADII` constants in the generator are display coordinates for these category positions; they are not configured scores, percentages, measurements, or skill metrics. The radars are not scientifically validated and do not measure proficiency, performance, seniority, certification, or years of experience. The owner approved the displayed classifications.
 
 The README includes a text explanation, and the SVG title and description carry accessible context. The [dimension-by-dimension evidence notes](radar-evidence.md) distinguish the approved self-description from public evidence and document its limits.
+
+The stack-only assets and four radar-pair assets are rendered from the same configuration. Radar classifications and card artwork are the same across themes and viewports; only theme colors, card positions, and narrow label wrapping vary. The charts are separate from both the stack artwork and the Developer Signals statistics card, so the README can place the single radar pair above the snake without duplicating it.
 ## Contribution statistics
 
 The generator requests only `date` and `contributionCount` from `user(login: "dpsychoo").contributionsCollection.contributionCalendar`, plus `totalContributions` to validate the day rows. It does not request contribution records, repository names, or private source details. The query does not request private contributions. GitHub documents private and internal contributions as requiring the optional `read:user` scope; the available local GitHub CLI token did not have that scope, and the public calendar query succeeded.
