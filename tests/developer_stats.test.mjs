@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   addDays,
   addMonthsClamped,
   computeMetrics,
   dateInTimeZone,
+  fetchCalendar,
+  generate,
+  generateDeveloperStats,
   getReportWindow,
-  preserveOrMarkUnavailable,
+  main,
+  preserveLastValidStats,
   renderRadarPairSvg,
   renderStackSvg,
   renderStatsSvg,
@@ -20,6 +26,9 @@ import {
 
 const config = JSON.parse(readFileSync(new URL('../profile/stack-signals.config.json', import.meta.url), 'utf8'));
 const profileReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+const manualWorkflow = readFileSync(new URL('../.github/workflows/developer-stats.yml', import.meta.url), 'utf8');
+const existingStatsWorkflow = readFileSync(new URL('../.github/workflows/stats.yml', import.meta.url), 'utf8');
+const publisherPath = new URL('../scripts/publish_developer_stats.mjs', import.meta.url);
 
 function calendarFixture(startDate, asOfDate, counts = {}) {
   const days = [];
@@ -32,6 +41,61 @@ function calendarFixture(startDate, asOfDate, counts = {}) {
       contributionDays: days.slice(index * 7, (index + 1) * 7),
     })),
   };
+}
+
+function runGit(cwd, ...args) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+  assert.equal(result.status, 0, `git ${args[0]} failed: ${result.stderr || result.stdout}`);
+  return (result.stdout || '').trim();
+}
+
+async function createPublisherFixture() {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'sgodx-stats-publisher-test-'));
+  const repoDir = path.join(tempRoot, 'worktree');
+  const originDir = path.join(tempRoot, 'origin.git');
+  const peerDir = path.join(tempRoot, 'peer');
+  const statsDir = path.join(tempRoot, 'preview');
+  await mkdir(repoDir, { recursive: true });
+  await mkdir(statsDir, { recursive: true });
+  runGit(tempRoot, 'init', '--bare', '--initial-branch=main', originDir);
+  runGit(repoDir, 'init', '--initial-branch=main');
+  runGit(repoDir, 'config', 'user.name', 'Stats test');
+  runGit(repoDir, 'config', 'user.email', 'stats-test@example.invalid');
+
+  for (const relativePath of [
+    '.github/workflows/developer-stats.yml',
+    'profile/stack-signals.config.json',
+    'scripts/publish_developer_stats.mjs',
+    'scripts/generate_stack_signals.mjs',
+    'profile/developer-stats-dark.svg',
+    'profile/developer-stats-light.svg',
+    'README.md',
+  ]) {
+    const target = path.join(repoDir, relativePath);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, relativePath.startsWith('profile/developer-stats-')
+      ? `<svg xmlns="http://www.w3.org/2000/svg"><title>baseline ${relativePath}</title></svg>\n`
+      : `baseline ${relativePath}\n`, 'utf8');
+  }
+  runGit(repoDir, 'add', '--all');
+  runGit(repoDir, 'commit', '-m', 'baseline');
+  const baseSha = runGit(repoDir, 'rev-parse', 'HEAD');
+  runGit(repoDir, 'remote', 'add', 'origin', originDir);
+  runGit(repoDir, 'push', '--set-upstream', 'origin', 'main');
+
+  for (const name of ['developer-stats-dark.svg', 'developer-stats-light.svg']) {
+    await writeFile(path.join(statsDir, name), `<svg xmlns="http://www.w3.org/2000/svg"><title>preview ${name}</title></svg>\n`, 'utf8');
+  }
+  return { tempRoot, repoDir, originDir, peerDir, statsDir, baseSha };
+}
+
+function runPublisher({ repoDir, statsDir, baseSha }) {
+  return spawnSync(process.execPath, [
+    fileURLToPath(publisherPath),
+    '--repo-dir', repoDir,
+    '--stats-dir', statsDir,
+    '--base-sha', baseSha,
+  ], { cwd: repoDir, encoding: 'utf8', windowsHide: true });
 }
 
 test('month clamping and day stepping handle leap dates', () => {
@@ -310,7 +374,146 @@ test('monthly contribution bars use GitHub-inspired greens in dark and light the
   }
 });
 
-test('API failure preserves existing stats and marks missing themes unavailable', async () => {
+test('GraphQL calendar requests use the configured login, timezone boundary, and bearer token', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  const previousGhToken = process.env.GH_TOKEN;
+  process.env.GITHUB_TOKEN = 'test-token-never-printed';
+  delete process.env.GH_TOKEN;
+  const asOfDate = '2024-03-02';
+  const now = new Date('2024-03-02T06:00:00.000Z');
+  const range = getReportWindow(asOfDate);
+  const fixture = calendarFixture(range.startDate, asOfDate, { '2024-03-01': 2 });
+
+  try {
+    const calendar = await fetchCalendar(config, range, now, async (url, init) => {
+      assert.equal(url, 'https://api.github.com/graphql');
+      assert.equal(init.headers.Authorization, 'Bearer test-token-never-printed');
+      const request = JSON.parse(init.body);
+      assert.match(request.query, /contributionCalendar/);
+      assert.deepEqual(request.variables, {
+        login: 'dpsychoo',
+        from: zonedMidnightAsUtc(range.startDate, config.reportingTimeZone),
+        to: now.toISOString(),
+      });
+      return { ok: true, json: async () => ({ data: { user: { contributionsCollection: { contributionCalendar: fixture } } } }) };
+    });
+    assert.equal(calendar.totalContributions, 2);
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+    if (previousGhToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGhToken;
+  }
+});
+
+test('GraphQL authentication and permission failures are distinguished from API failures', async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  const previousGhToken = process.env.GH_TOKEN;
+  process.env.GITHUB_TOKEN = 'test-token-never-printed';
+  delete process.env.GH_TOKEN;
+  const range = getReportWindow('2024-03-02');
+  try {
+    await assert.rejects(
+      fetchCalendar(config, range, new Date('2024-03-02T06:00:00.000Z'), async () => ({ ok: false, status: 403 })),
+      (error) => error.kind === 'authentication' && /HTTP 403/.test(error.message),
+    );
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+    if (previousGhToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGhToken;
+  }
+});
+
+test('API and invalid-data failures do not overwrite existing Developer Stats', async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), 'sgodx-profile-stats-only-test-'));
+  try {
+    const darkPath = path.join(outputDir, 'developer-stats-dark.svg');
+    const lightPath = path.join(outputDir, 'developer-stats-light.svg');
+    const lastValidDark = '<svg xmlns="http://www.w3.org/2000/svg"><title>last dark</title></svg>\n';
+    const lastValidLight = '<svg xmlns="http://www.w3.org/2000/svg"><title>last light</title></svg>\n';
+    await writeFile(darkPath, lastValidDark, 'utf8');
+    await writeFile(lightPath, lastValidLight, 'utf8');
+
+    await assert.rejects(
+      generateDeveloperStats({
+        outputDir,
+        config,
+        now: new Date('2024-03-02T06:00:00.000Z'),
+        fetcher: async () => { throw new Error('simulated network failure'); },
+      }),
+      (error) => error.kind === 'api' && /GraphQL request failed/.test(error.message),
+    );
+    assert.equal(await readFile(darkPath, 'utf8'), lastValidDark);
+    assert.equal(await readFile(lightPath, 'utf8'), lastValidLight);
+
+    const asOfDate = '2024-03-02';
+    const range = getReportWindow(asOfDate);
+    const invalidCalendar = calendarFixture(range.startDate, asOfDate, { '2024-03-01': 1 });
+    invalidCalendar.totalContributions += 1;
+    await assert.rejects(
+      generateDeveloperStats({
+        outputDir,
+        config,
+        now: new Date('2024-03-02T06:00:00.000Z'),
+        fetcher: async () => invalidCalendar,
+      }),
+      (error) => error.kind === 'data' && /Invalid contribution data/.test(error.message),
+    );
+    assert.equal(await readFile(darkPath, 'utf8'), lastValidDark);
+    assert.equal(await readFile(lightPath, 'utf8'), lastValidLight);
+  } finally {
+    const resolved = path.resolve(outputDir);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('stats-only generation writes exactly two deterministic Developer Stats SVGs', async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), 'sgodx-profile-stats-only-generation-test-'));
+  const asOfDate = '2024-03-02';
+  const range = getReportWindow(asOfDate);
+  const calendar = calendarFixture(range.startDate, asOfDate, { '2024-03-01': 2 });
+  const now = new Date('2024-03-02T06:00:00.000Z');
+  try {
+    const first = await generate({ outputDir, config, now, fetcher: async () => calendar, statsOnly: true });
+    const files = (await readdir(outputDir)).sort();
+    assert.deepEqual(files, ['developer-stats-dark.svg', 'developer-stats-light.svg']);
+    assert.equal(first.changed.length, 2);
+    const before = await Promise.all(files.map((file) => readFile(path.join(outputDir, file), 'utf8')));
+
+    const second = await generate({ outputDir, config, now, fetcher: async () => calendar, statsOnly: true });
+    const after = await Promise.all(files.map((file) => readFile(path.join(outputDir, file), 'utf8')));
+    assert.deepEqual(second.changed, []);
+    assert.deepEqual(after, before);
+  } finally {
+    const resolved = path.resolve(outputDir);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('strict stats-only CLI fails on API errors without creating fallback cards or stack assets', async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), 'sgodx-profile-strict-api-test-'));
+  const previousToken = process.env.GITHUB_TOKEN;
+  const previousFetch = globalThis.fetch;
+  process.env.GITHUB_TOKEN = 'test-token-never-printed';
+  globalThis.fetch = async () => ({ ok: false, status: 503 });
+  try {
+    const result = await main(['--stats-only', '--strict-api', '--output-dir', outputDir]);
+    assert.equal(result, 1);
+    assert.deepEqual(await readdir(outputDir), []);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+    const resolved = path.resolve(outputDir);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('API failure preserves valid SVGs and leaves missing themes unwritten', async () => {
   const outputDir = await mkdtemp(path.join(os.tmpdir(), 'sgodx-profile-stats-test-'));
   try {
     const darkPath = path.join(outputDir, 'developer-stats-dark.svg');
@@ -318,12 +521,125 @@ test('API failure preserves existing stats and marks missing themes unavailable'
     const lastValidDark = '<svg xmlns="http://www.w3.org/2000/svg"><title>last valid stats</title></svg>\n';
     await writeFile(darkPath, lastValidDark, 'utf8');
 
-    const changed = await preserveOrMarkUnavailable(outputDir, 'America/Santiago');
-    assert.deepEqual(changed, [lightPath]);
+    await preserveLastValidStats(outputDir);
     assert.equal(await readFile(darkPath, 'utf8'), lastValidDark);
-    assert.match(await readFile(lightPath, 'utf8'), /DATA UNAVAILABLE/);
+    await assert.rejects(readFile(lightPath, 'utf8'), { code: 'ENOENT' });
   } finally {
     const resolved = path.resolve(outputDir);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('manual automation defaults to read-only verification and scopes publication permissions', () => {
+  assert.match(manualWorkflow, /^on:\s*\n\s+workflow_dispatch:/m);
+  assert.doesNotMatch(manualWorkflow, /^\s+schedule:/m);
+  assert.match(manualWorkflow, /publish:[\s\S]*?type: boolean[\s\S]*?default: false/);
+  assert.match(manualWorkflow, /verify:[\s\S]*?contents: read/);
+  assert.match(manualWorkflow, /publish:[\s\S]*?contents: write/);
+  assert.match(manualWorkflow, /--stats-only[\s\S]*?--strict-api/);
+  assert.match(manualWorkflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(manualWorkflow, /actions\/setup-node@v7\.1\.0[\s\S]*?node-version: 24/);
+  assert.match(manualWorkflow, /actions\/checkout@v7\.0\.1/);
+  assert.match(manualWorkflow, /actions\/upload-artifact@v7\.0\.2/);
+  assert.match(manualWorkflow, /actions\/download-artifact@v8\.0\.2/);
+  assert.match(manualWorkflow, /scripts\/publish_developer_stats\.mjs/);
+  assert.match(manualWorkflow, /group: profile-main-generated-assets[\s\S]*?queue: max/);
+  assert.match(existingStatsWorkflow, /group: profile-main-generated-assets[\s\S]*?queue: max/);
+  assert.doesNotMatch(manualWorkflow, /--force|--force-with-lease/);
+});
+
+test('publisher fast-forwards unrelated main changes, commits only two SVGs, and skips identical output', async () => {
+  const fixture = await createPublisherFixture();
+  try {
+    runGit(fixture.tempRoot, 'clone', fixture.originDir, fixture.peerDir);
+    runGit(fixture.peerDir, 'config', 'user.name', 'Concurrent workflow');
+    runGit(fixture.peerDir, 'config', 'user.email', 'concurrent@example.invalid');
+    await writeFile(path.join(fixture.peerDir, 'README.md'), 'unrelated main update\n', 'utf8');
+    runGit(fixture.peerDir, 'add', '--', 'README.md');
+    runGit(fixture.peerDir, 'commit', '-m', 'unrelated main update');
+    runGit(fixture.peerDir, 'push', 'origin', 'main');
+
+    const publish = runPublisher(fixture);
+    assert.equal(publish.status, 0, publish.stderr || publish.stdout);
+    runGit(fixture.repoDir, 'fetch', 'origin', 'refs/heads/main:refs/remotes/origin/main');
+    assert.equal(runGit(fixture.repoDir, 'show', 'refs/remotes/origin/main:README.md'), 'unrelated main update');
+    assert.match(runGit(fixture.repoDir, 'show', 'refs/remotes/origin/main:profile/developer-stats-dark.svg'), /preview developer-stats-dark/);
+    const commitPaths = runGit(fixture.repoDir, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'refs/remotes/origin/main')
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.deepEqual(commitPaths, ['profile/developer-stats-dark.svg', 'profile/developer-stats-light.svg']);
+
+    const publishedSha = runGit(fixture.repoDir, 'rev-parse', 'refs/remotes/origin/main');
+    const noOp = runPublisher({ ...fixture, baseSha: publishedSha });
+    assert.equal(noOp.status, 0, noOp.stderr || noOp.stdout);
+    runGit(fixture.repoDir, 'fetch', 'origin', 'refs/heads/main:refs/remotes/origin/main');
+    assert.equal(runGit(fixture.repoDir, 'rev-parse', 'refs/remotes/origin/main'), publishedSha);
+    assert.match(noOp.stdout, /no commit is needed/);
+  } finally {
+    const resolved = path.resolve(fixture.tempRoot);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('publisher refuses to overwrite a Developer Stats SVG changed after verification', async () => {
+  const fixture = await createPublisherFixture();
+  try {
+    runGit(fixture.tempRoot, 'clone', fixture.originDir, fixture.peerDir);
+    runGit(fixture.peerDir, 'config', 'user.name', 'Concurrent workflow');
+    runGit(fixture.peerDir, 'config', 'user.email', 'concurrent@example.invalid');
+    const changedDark = '<svg xmlns="http://www.w3.org/2000/svg"><title>newer valid stats</title></svg>\n';
+    await writeFile(path.join(fixture.peerDir, 'profile/developer-stats-dark.svg'), changedDark, 'utf8');
+    runGit(fixture.peerDir, 'add', '--', 'profile/developer-stats-dark.svg');
+    runGit(fixture.peerDir, 'commit', '-m', 'concurrent stats update');
+    runGit(fixture.peerDir, 'push', 'origin', 'main');
+
+    const publish = runPublisher(fixture);
+    assert.equal(publish.status, 1);
+    assert.match(publish.stderr, /Git conflict: a Developer Stats SVG changed on main/);
+    runGit(fixture.repoDir, 'fetch', 'origin', 'refs/heads/main:refs/remotes/origin/main');
+    assert.equal(runGit(fixture.repoDir, 'show', 'refs/remotes/origin/main:profile/developer-stats-dark.svg'), changedDark.trimEnd());
+    assert.equal(runGit(fixture.repoDir, 'rev-parse', 'refs/remotes/origin/main'), runGit(fixture.peerDir, 'rev-parse', 'HEAD'));
+  } finally {
+    const resolved = path.resolve(fixture.tempRoot);
+    assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
+    await rm(resolved, { recursive: true, force: true });
+  }
+});
+
+test('publisher safely rebases and retries once after a non-fast-forward race', async () => {
+  const fixture = await createPublisherFixture();
+  try {
+    runGit(fixture.tempRoot, 'clone', fixture.originDir, fixture.peerDir);
+    runGit(fixture.peerDir, 'config', 'user.name', 'Concurrent workflow');
+    runGit(fixture.peerDir, 'config', 'user.email', 'concurrent@example.invalid');
+    await writeFile(path.join(fixture.peerDir, 'README.md'), 'concurrent push during publication\n', 'utf8');
+
+    const hookPath = path.join(fixture.repoDir, '.git/hooks/pre-push');
+    const peerPosixPath = fixture.peerDir.replaceAll('\\', '/');
+    const flagPosixPath = path.join(fixture.repoDir, '.git/stats-race-handled').replaceAll('\\', '/');
+    await writeFile(hookPath, `#!/bin/sh
+set -eu
+if [ ! -f '${flagPosixPath}' ]; then
+  git -C '${peerPosixPath}' add -- README.md
+  git -C '${peerPosixPath}' commit -m 'concurrent push during publication'
+  git -C '${peerPosixPath}' push origin main
+  touch '${flagPosixPath}'
+fi
+`, 'utf8');
+    await chmod(hookPath, 0o755);
+
+    const publish = runPublisher(fixture);
+    assert.equal(publish.status, 0, publish.stderr || publish.stdout);
+    assert.match(publish.stdout, /Published only profile\/developer-stats-dark\.svg and profile\/developer-stats-light\.svg/);
+    runGit(fixture.repoDir, 'fetch', 'origin', 'refs/heads/main:refs/remotes/origin/main');
+    assert.equal(runGit(fixture.repoDir, 'show', 'refs/remotes/origin/main:README.md'), 'concurrent push during publication');
+    assert.match(runGit(fixture.repoDir, 'show', 'refs/remotes/origin/main:profile/developer-stats-light.svg'), /preview developer-stats-light/);
+    const commitPaths = runGit(fixture.repoDir, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'refs/remotes/origin/main')
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.deepEqual(commitPaths, ['profile/developer-stats-dark.svg', 'profile/developer-stats-light.svg']);
+  } finally {
+    const resolved = path.resolve(fixture.tempRoot);
     assert.ok(resolved.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`), 'cleanup target must remain under the OS temp directory');
     await rm(resolved, { recursive: true, force: true });
   }

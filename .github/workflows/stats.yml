@@ -11,6 +11,9 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    concurrency:
+      group: profile-main-generated-assets
+      queue: max
     steps:
       - name: Check out profile repository
         uses: actions/checkout@v7.0.1

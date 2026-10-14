@@ -695,11 +695,18 @@ async function writeStackAssets(outputDir, config) {
 }
 
 function parseArguments(args) {
-  const result = { outputDir: path.join(REPO_ROOT, 'profile'), configPath: path.join(REPO_ROOT, 'profile', 'stack-signals.config.json') };
+  const result = {
+    outputDir: path.join(REPO_ROOT, 'profile'),
+    configPath: path.join(REPO_ROOT, 'profile', 'stack-signals.config.json'),
+    statsOnly: false,
+    strictApi: false,
+  };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--output-dir' && args[index + 1]) result.outputDir = path.resolve(args[++index]);
     else if (argument === '--config' && args[index + 1]) result.configPath = path.resolve(args[++index]);
+    else if (argument === '--stats-only') result.statsOnly = true;
+    else if (argument === '--strict-api') result.strictApi = true;
     else if (argument === '--help' || argument === '-h') result.help = true;
     else throw new Error(`unknown or incomplete argument: ${argument}`);
   }
@@ -710,7 +717,9 @@ function printHelp() {
   return [
     'Generate theme-specific Stack & Signals SVGs and public contribution metrics.',
     '',
-    'Usage: node scripts/generate_stack_signals.mjs [--output-dir DIR] [--config FILE]',
+    'Usage: node scripts/generate_stack_signals.mjs [--output-dir DIR] [--config FILE] [--stats-only] [--strict-api]',
+    '  --stats-only  Write only the dark and light Developer Stats SVGs.',
+    '  --strict-api  Fail on API or authentication errors without writing fallback cards.',
     '',
     'Authentication: GITHUB_TOKEN/GH_TOKEN, or an authenticated `gh` CLI session.',
   ].join('\n');
@@ -732,7 +741,13 @@ async function loadConfig(configPath) {
   return config;
 }
 
-async function fetchCalendar(config, range, now) {
+function classifiedError(kind, message, cause) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.kind = kind;
+  return error;
+}
+
+export async function fetchCalendar(config, range, now, request = fetch) {
   const variables = {
     login: config.owner,
     from: zonedMidnightAsUtc(range.startDate, config.reportingTimeZone),
@@ -741,18 +756,30 @@ async function fetchCalendar(config, range, now) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   let response;
   if (token) {
-    const httpResponse = await fetch(GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'dpsychoo-stack-signals/1.0',
-      },
-      body: JSON.stringify({ query: GRAPHQL_QUERY, variables }),
-    });
-    if (!httpResponse.ok) throw new Error(`GitHub GraphQL returned HTTP ${httpResponse.status}`);
-    response = await httpResponse.json();
+    let httpResponse;
+    try {
+      httpResponse = await request(GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'dpsychoo-stack-signals/1.0',
+        },
+        body: JSON.stringify({ query: GRAPHQL_QUERY, variables }),
+      });
+    } catch (error) {
+      throw classifiedError('api', 'GitHub GraphQL request failed before a response was received.', error);
+    }
+    if (!httpResponse.ok) {
+      const kind = [401, 403].includes(httpResponse.status) ? 'authentication' : 'api';
+      throw classifiedError(kind, `GitHub GraphQL returned HTTP ${httpResponse.status}.`);
+    }
+    try {
+      response = await httpResponse.json();
+    } catch (error) {
+      throw classifiedError('api', 'GitHub GraphQL returned a response that was not valid JSON.', error);
+    }
   } else {
     const args = [
       'api', 'graphql',
@@ -762,18 +789,31 @@ async function fetchCalendar(config, range, now) {
       '-F', `to=${variables.to}`,
     ];
     const result = spawnSync('gh', args, { cwd: REPO_ROOT, encoding: 'utf8', windowsHide: true });
-    if (result.error || result.status !== 0) throw new Error('GitHub CLI GraphQL request failed; authenticate with `gh auth login` or provide GITHUB_TOKEN');
+    if (result.error || result.status !== 0) {
+      const output = `${result.stderr || ''}\n${result.stdout || ''}`;
+      const kind = /401|403|bad credentials|requires authentication|resource not accessible/i.test(output)
+        ? 'authentication'
+        : 'api';
+      const message = kind === 'authentication'
+        ? 'GitHub CLI authentication or API permissions were rejected.'
+        : 'GitHub CLI GraphQL request failed; authenticate with `gh auth login` or provide GITHUB_TOKEN.';
+      throw classifiedError(kind, message, result.error);
+    }
     try {
       response = JSON.parse(result.stdout);
     } catch {
-      throw new Error('GitHub CLI returned invalid GraphQL JSON');
+      throw classifiedError('api', 'GitHub CLI returned invalid GraphQL JSON.');
     }
   }
   if (Array.isArray(response.errors) && response.errors.length) {
-    throw new Error(`GitHub GraphQL returned an error: ${response.errors[0]?.message || 'unknown schema or permission error'}`);
+    const message = response.errors[0]?.message || 'unknown schema or permission error';
+    const kind = /unauthori[sz]ed|forbidden|permission|resource not accessible|must be authenticated/i.test(message)
+      ? 'authentication'
+      : 'api';
+    throw classifiedError(kind, `GitHub GraphQL returned an error: ${message}`);
   }
   const calendar = response?.data?.user?.contributionsCollection?.contributionCalendar;
-  if (!calendar) throw new Error(`GitHub user ${config.owner} or contributionCalendar was unavailable`);
+  if (!calendar) throw classifiedError('data', `GitHub user ${config.owner} or contributionCalendar was unavailable.`);
   return calendar;
 }
 
@@ -786,8 +826,7 @@ async function writeStatsAssets(outputDir, metrics, timeZone) {
   return changed;
 }
 
-export async function preserveOrMarkUnavailable(outputDir, timeZone) {
-  const changed = [];
+export async function preserveLastValidStats(outputDir) {
   for (const themeName of Object.keys(THEMES)) {
     const filePath = path.join(outputDir, `developer-stats-${themeName}.svg`);
     let existing = null;
@@ -798,23 +837,44 @@ export async function preserveOrMarkUnavailable(outputDir, timeZone) {
     }
     if (isSvgFile(existing)) {
       console.warn(`Preserving last valid ${themeName} developer stats SVG after API failure.`);
-    } else if (await writeSvgIfChanged(filePath, renderUnavailableStatsSvg(themeName, timeZone))) {
-      changed.push(filePath);
+    } else {
+      console.warn(`No last valid ${themeName} developer stats SVG is available; leaving it unwritten.`);
     }
   }
-  return changed;
 }
 
-export async function generate({ outputDir, config, now = new Date(), fetcher = fetchCalendar } = {}) {
+export async function generateDeveloperStats({ outputDir, config, now = new Date(), fetcher = fetchCalendar } = {}) {
   const asOfDate = dateInTimeZone(now, config.reportingTimeZone);
   const range = getReportWindow(asOfDate);
   await mkdir(outputDir, { recursive: true });
-  const changed = await writeStackAssets(outputDir, config);
-  const calendar = await fetcher(config, range, now);
-  const metrics = computeMetrics(calendar, { asOfDate, windowStart: range.startDate });
+  let calendar;
+  try {
+    calendar = await fetcher(config, range, now);
+  } catch (error) {
+    if (error?.kind) throw error;
+    throw classifiedError('api', `GitHub GraphQL request failed: ${error.message}`, error);
+  }
+  let metrics;
+  try {
+    metrics = computeMetrics(calendar, { asOfDate, windowStart: range.startDate });
+  } catch (error) {
+    throw classifiedError('data', `Invalid contribution data: ${error.message}`, error);
+  }
   metrics.timeZone = config.reportingTimeZone;
-  changed.push(...await writeStatsAssets(outputDir, metrics, config.reportingTimeZone));
+  let changed;
+  try {
+    changed = await writeStatsAssets(outputDir, metrics, config.reportingTimeZone);
+  } catch (error) {
+    throw classifiedError('generation', `Unable to write Developer Stats SVGs: ${error.message}`, error);
+  }
   return { metrics, changed, range };
+}
+
+export async function generate({ outputDir, config, now = new Date(), fetcher = fetchCalendar, statsOnly = false } = {}) {
+  await mkdir(outputDir, { recursive: true });
+  const changed = statsOnly ? [] : await writeStackAssets(outputDir, config);
+  const stats = await generateDeveloperStats({ outputDir, config, now, fetcher });
+  return { ...stats, changed: [...changed, ...stats.changed] };
 }
 
 export async function main(args = process.argv.slice(2)) {
@@ -827,27 +887,31 @@ export async function main(args = process.argv.slice(2)) {
     }
     const config = await loadConfig(options.configPath);
     const now = new Date();
-    const asOfDate = dateInTimeZone(now, config.reportingTimeZone);
-    const range = getReportWindow(asOfDate);
     await mkdir(options.outputDir, { recursive: true });
-    const changed = await writeStackAssets(options.outputDir, config);
-    let calendar;
+    const changed = options.statsOnly ? [] : await writeStackAssets(options.outputDir, config);
     try {
-      calendar = await fetchCalendar(config, range, now);
-    } catch (error) {
-      const fallbackChanged = await preserveOrMarkUnavailable(options.outputDir, config.reportingTimeZone);
-      console.warn(`Developer stats unavailable: ${error.message}`);
-      if (fallbackChanged.length) console.warn('Wrote explicit unavailable SVG state because no prior valid card existed.');
+      const stats = await generateDeveloperStats({
+        outputDir: options.outputDir,
+        config,
+        now,
+      });
+      changed.push(...stats.changed);
+      console.log(`Generated public contribution stats for ${stats.metrics.periodLabel}, through ${displayDate(stats.metrics.endDate)} (${stats.metrics.totalContributions} contributions).`);
+      console.log(`Updated ${changed.length} SVG asset(s).`);
       return 0;
+    } catch (error) {
+      if (error.kind !== 'api' && error.kind !== 'authentication') throw error;
+      if (!options.strictApi) await preserveLastValidStats(options.outputDir);
+      throw error;
     }
-    const metrics = computeMetrics(calendar, { asOfDate, windowStart: range.startDate });
-    metrics.timeZone = config.reportingTimeZone;
-    changed.push(...await writeStatsAssets(options.outputDir, metrics, config.reportingTimeZone));
-    console.log(`Generated public contribution stats for ${metrics.periodLabel}, through ${displayDate(metrics.endDate)} (${metrics.totalContributions} contributions).`);
-    console.log(`Updated ${changed.length} SVG asset(s).`);
-    return 0;
   } catch (error) {
-    console.error(`Generation failed: ${error.message}`);
+    const prefix = {
+      api: 'API failure',
+      authentication: 'Authentication or permission failure',
+      data: 'Invalid contribution data',
+      generation: 'Generation failure',
+    }[error.kind] || 'Generation failure';
+    console.error(`${prefix}: ${error.message}`);
     return 1;
   }
 }
