@@ -80,7 +80,10 @@
     src="https://raw.githubusercontent.com/dpsychoo/dpsychoo/projects/projects-light.svg">
 </picture>
 <p align="center">
-  <a href="https://create.sgodx.com/">SGX VI · Live app</a>&#160;·&#160;
+  <strong>SGX VI</strong> ·
+  <a href="https://create.sgodx.com/">LIVE APP</a> |
+  <a href="https://github.com/dpsychoo/gta-vi-generator-showcase">CASE STUDY</a> |
+  <a href="https://dpsychoo.github.io/gta-vi-generator-showcase/">ARCHITECTURE</a><br>
   <a href="https://github.com/dpsychoo/Itachi_SGODX">SGODX — UCHIHA ITACHI · Source</a>
 </p>
 <!-- ===== SOCIAL BADGES ===== -->
